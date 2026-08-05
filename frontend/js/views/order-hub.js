@@ -31,7 +31,7 @@ function component() {
       this.loading = true;
       try {
         const [{ data: soPi, error: e1 }, { data: plans, error: e2 }, { data: deliveries, error: e3 }] = await Promise.all([
-          supabase.from('so_pi').select('*, customers(customer_name), so_pi_items(qty, products(product_name))').order('doc_date', { ascending: false }),
+          supabase.from('so_pi').select('*, customers!customer_id(customer_name), so_pi_items(qty, products(product_name))').order('doc_date', { ascending: false }),
           supabase.from('production_plans').select('*'),
           supabase.from('deliveries').select('*'),
         ]);

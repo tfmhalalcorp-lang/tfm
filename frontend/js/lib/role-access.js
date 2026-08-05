@@ -65,6 +65,7 @@ export const MENU_SECTIONS = [
       { view: 'report-fillweight', icon: 'fa-balance-scale', label: 'รายงาน Fill Weight' },
       { view: 'report-qc', icon: 'fa-clipboard-check', label: 'รายงานตรวจสอบคุณภาพ' },
       { view: 'report-maintenance', icon: 'fa-screwdriver-wrench', label: 'รายงานการซ่อมบำรุง' },
+      { view: 'report-rm-price', icon: 'fa-money-bill-trend-up', label: 'วิเคราะห์ราคา RM', roles: ['admin'] },
     ],
   },
   {
@@ -117,11 +118,18 @@ export const PAGE_TITLES = {
   'order-plan': 'แผนการผลิต',
   'order-delivery': 'บันทึกการจัดส่ง/ส่งมอบสินค้า',
   'order-accounting': 'ส่วนงานบัญชี',
+  'report-rm-price': 'วิเคราะห์ราคา RM (RM Price Analysis)',
 };
 
+// A group item may optionally carry its own `roles` array, narrower than
+// the group's — e.g. one admin-only report living inside the otherwise
+// all-roles "รายงาน" group. Items without `roles` keep inheriting
+// visibility from the group alone (the original, still-default behavior).
 export function visibleSections(role) {
   if (!role) return [];
-  return MENU_SECTIONS.filter((s) => s.roles.includes(role));
+  return MENU_SECTIONS.filter((s) => s.roles.includes(role)).map((s) =>
+    s.type === 'group' ? { ...s, items: s.items.filter((it) => !it.roles || it.roles.includes(role)) } : s
+  );
 }
 
 document.addEventListener('alpine:init', () => {

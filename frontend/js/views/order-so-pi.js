@@ -64,7 +64,7 @@ function component() {
       try {
         const { data, error } = await supabase
           .from('so_pi')
-          .select('*, customers(customer_name), so_pi_items(id, qty, products(product_name))')
+          .select('*, customers!customer_id(customer_name), so_pi_items(id, qty, products(product_name))')
           .order('doc_date', { ascending: false });
         if (error) throw new Error(error.message);
         this.rows = data || [];
