@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>ระบบบูรณาการคำสั่งซื้อครบวงจร | OrderCenter</title>
+    <meta name="description" content="OrderCenter - ระบบบูรณาการคำสั่งซื้อครบวงจร by Taveechai">
+    <meta name="theme-color" content="#4CAF50">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="images/logo.png">
+    <link rel="icon" href="images/logo.png">
+
+    <!-- Fonts / Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://npmcdn.com/flatpickr/dist/themes/airbnb.css">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+
+    <!-- Tailwind (Play CDN, JIT-in-browser, no build step) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/tailwind-config.js"></script>
+    <style type="text/tailwindcss">
+        [x-cloak] { display: none !important; }
+        /* @layer components guarantees these lose cascade ties to any
+           utility class (e.g. w-[150px] on a .form-control input) —
+           without this layer, ordering depends on when Tailwind's JIT
+           happens to discover each class, which is not reliable for
+           dynamically-injected view content. */
+        @layer components {
+            .btn { @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
+            .btn-primary { @apply bg-primary text-white hover:bg-primary-dark; }
+            .btn-danger { @apply bg-danger text-white hover:bg-red-700; }
+            .btn-secondary { @apply bg-gray-200 text-gray-700 hover:bg-gray-300; }
+            .btn-sm { @apply !px-3 !py-1.5 text-sm; }
+            .form-control { @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400; }
+            .form-label { @apply block text-sm font-semibold text-gray-600 mb-1; }
+            .card { @apply bg-white rounded-xl shadow p-4 md:p-5; }
+            .badge { @apply inline-block px-2.5 py-1 rounded-full text-xs font-semibold; }
+            .modal-panel { @apply bg-white rounded-xl shadow-2xl w-full max-h-[92vh] overflow-y-auto; }
+        }
+    </style>
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Vendor libraries (loaded synchronously in <head> so window.* globals exist before js/main.js runs) -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+
+<body class="bg-gray-100 text-gray-800 font-sans" x-data="appShell">
+
+    <!-- BOOT / SESSION-RESTORE LOADING SCREEN -->
+    <div x-show="!$store.auth.ready" class="fixed inset-0 z-[9999] flex items-center justify-center bg-white">
+        <i class="fa-solid fa-spinner fa-spin text-4xl text-primary"></i>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="auth-container" x-data="loginForm" x-show="$store.auth.ready && !$store.auth.isAuthenticated" x-cloak
+         class="min-h-screen w-full flex items-center justify-center p-4 bg-gradient-to-br from-primary to-secondary">
+        <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 text-center">
+            <img src="images/logo.png" alt="OrderCenter Logo" class="w-24 h-24 mx-auto mb-4 object-contain">
+            <h2 class="text-xl font-bold text-gray-800">ระบบบูรณาการคำสั่งซื้อครบวงจร</h2>
+            <p class="text-secondary text-sm mt-1">OrderCenter</p>
+            <p class="text-gray-400 text-xs mt-1 mb-6">บริษัท ทวีชัย ฟู้ด แมนูแฟคเจอริ่ง จำกัด</p>
+            <form @submit.prevent="submit" class="text-left space-y-4">
+                <div>
+                    <label class="form-label">Username</label>
+                    <input type="text" x-model="username" required autocomplete="username" data-no-flatpickr
+                           class="form-control text-center">
+                </div>
+                <div>
+                    <label class="form-label">Password</label>
+                    <input type="password" x-model="password" required autocomplete="current-password"
+                           class="form-control text-center">
+                </div>
+                <button type="submit" :disabled="loading" class="btn btn-primary w-full">
+                    <i class="fa-solid fa-spinner fa-spin" x-show="loading" x-cloak></i>
+                    <span x-text="loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'"></span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="app-container" x-show="$store.auth.ready && $store.auth.isAuthenticated" x-cloak class="min-h-screen">
+
+        <!-- mobile overlay -->
+        <div class="fixed inset-0 bg-black/50 z-40 md:hidden" x-show="$store.ui.sidebarOpen" x-cloak
+             @click="$store.ui.sidebarOpen = false" x-transition.opacity></div>
+
+        <!-- SIDEBAR -->
+        <nav id="sidebar"
+             class="fixed top-0 left-0 h-screen w-64 bg-white shadow-lg z-50 flex flex-col transform transition-transform duration-300 md:translate-x-0"
+             :class="$store.ui.sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
+            <div class="h-[60px] flex items-center justify-center gap-2 border-b shrink-0 text-primary font-bold">
+                <img src="images/logo.png" class="h-8 w-8 object-contain" alt="OrderCenter logo">
+                <span>OrderCenter</span>
+            </div>
+            <ul class="flex-1 overflow-y-auto py-2 text-sm">
+                <template x-for="section in visibleMenu" :key="section.id || section.view">
+                    <li>
+                        <template x-if="section.type === 'link'">
+                            <a href="#" @click.prevent="navigateTo(section.view)"
+                               class="flex items-center gap-2 px-5 py-3 border-l-4 border-transparent text-gray-600 hover:bg-primary-light hover:text-primary hover:border-primary transition-colors"
+                               :class="$store.ui.currentView === section.view ? 'bg-primary-light text-primary border-primary font-medium' : ''">
+                                <i class="fa-solid w-4" :class="section.icon"></i>
+                                <span x-text="section.label"></span>
+                            </a>
+                        </template>
+                        <template x-if="section.type === 'group'">
+                            <div x-data="{ open: false }">
+                                <a href="#" @click.prevent="open = !open"
+                                   class="flex items-center justify-between gap-2 px-5 py-3 text-white font-semibold bg-gradient-to-br from-primary-dark to-primary border-l-4 border-green-800 hover:brightness-110 transition-all">
+                                    <span class="flex items-center gap-2">
+                                        <i class="fa-solid w-4" :class="section.icon"></i>
+                                        <span x-text="section.label"></span>
+                                    </span>
+                                    <i class="fa-solid fa-chevron-down text-xs transition-transform" :class="open ? 'rotate-180' : ''"></i>
+                                </a>
+                                <ul x-show="open" x-collapse>
+                                    <template x-for="item in section.items" :key="item.view">
+                                        <li>
+                                            <a href="#" @click.prevent="navigateTo(item.view)"
+                                               class="flex items-center gap-2 pl-11 pr-5 py-2.5 text-[0.85rem] bg-primary-light/40 text-green-800 border-l-4 border-transparent hover:bg-primary-light hover:border-primary transition-colors"
+                                               :class="$store.ui.currentView === item.view ? 'bg-primary-light border-primary font-medium text-green-900' : ''">
+                                                <i class="fa-solid w-4" :class="item.icon"></i>
+                                                <span x-text="item.label"></span>
+                                            </a>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+                        </template>
+                    </li>
+                </template>
+            </ul>
+        </nav>
+
+        <!-- CONTENT -->
+        <div class="flex flex-col min-h-screen md:ml-64">
+            <div class="top-bar h-[60px] bg-white shadow-sm flex items-center justify-between px-4 sticky top-0 z-30">
+                <div class="flex items-center gap-3 min-w-0">
+                    <button class="hamburger md:hidden text-xl text-gray-600 shrink-0" @click="$store.ui.sidebarOpen = true">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <span id="page-title" class="font-bold text-base md:text-lg truncate" x-text="$store.ui.pageTitle"></span>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                    <span class="text-gray-600 text-sm hidden sm:inline" id="user-display-name" x-text="$store.auth.fullname"></span>
+                    <button class="btn btn-danger btn-sm" @click="$store.auth.logout()" title="ออกจากระบบ">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+
+            <main id="main-content" class="flex-1 p-3 md:p-6">
+                <div id="view-container"></div>
+            </main>
+        </div>
+    </div>
+
+    <!-- APP SCRIPTS -->
+    <script type="module" src="js/main.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+</body>
+
+</html>
