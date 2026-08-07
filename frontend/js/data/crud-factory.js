@@ -6,7 +6,7 @@
 // Every view module (js/views/master-*.js) just supplies its own
 // table/field specifics and imports these two functions.
 import { supabase } from '../lib/supabaseClient.js';
-import { alertError, toastSuccess, confirmDelete } from '../lib/ui-helpers.js';
+import { alertError, toastSuccess, confirmDelete, syncPickers } from '../lib/ui-helpers.js';
 
 /**
  * @param {object} config
@@ -84,12 +84,14 @@ export function createCrudResource(config) {
       this.isEdit = false;
       this.form = config.emptyForm();
       this.modalOpen = true;
+      this.$nextTick(() => syncPickers(this.$root));
     },
 
     openEdit(item) {
       this.isEdit = true;
       this.form = config.toForm(item);
       this.modalOpen = true;
+      this.$nextTick(() => syncPickers(this.$root));
     },
 
     closeModal() {

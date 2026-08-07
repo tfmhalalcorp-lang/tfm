@@ -66,6 +66,7 @@ export const MENU_SECTIONS = [
       { view: 'report-qc', icon: 'fa-clipboard-check', label: 'รายงานตรวจสอบคุณภาพ' },
       { view: 'report-maintenance', icon: 'fa-screwdriver-wrench', label: 'รายงานการซ่อมบำรุง' },
       { view: 'report-rm-price', icon: 'fa-money-bill-trend-up', label: 'วิเคราะห์ราคา RM', roles: ['admin'] },
+      { view: 'report-sales-order', icon: 'fa-file-invoice', label: 'SALES ORDER', roles: ['admin'] },
     ],
   },
   {
@@ -119,6 +120,7 @@ export const PAGE_TITLES = {
   'order-delivery': 'บันทึกการจัดส่ง/ส่งมอบสินค้า',
   'order-accounting': 'ส่วนงานบัญชี',
   'report-rm-price': 'วิเคราะห์ราคา RM (RM Price Analysis)',
+  'report-sales-order': 'รายงาน SALES ORDER',
 };
 
 // A group item may optionally carry its own `roles` array, narrower than

@@ -83,13 +83,45 @@ export function initDatePickers() {
   });
 }
 
-/** Tom Select for every not-yet-initialized <select> in the document. */
+/**
+ * Flatpickr and Tom Select each keep their own displayed value separate
+ * from the underlying <input>/<select> — once initialized, they don't
+ * notice when a framework (Alpine's x-model) sets that underlying value
+ * programmatically. Any modal reused across records (edit row A, then
+ * edit row B) needs this called after the new values are in the DOM, or
+ * the pickers keep showing row A's date/selection.
+ *
+ * Note: query by tag, not `input[type="date"]` — flatpickr's altInput
+ * mode rewrites the original input's type to "hidden" once it attaches,
+ * so a type="date" selector stops matching it after the very first init.
+ */
+export function syncPickers(root) {
+  const scope = root || document;
+  scope.querySelectorAll('input').forEach((input) => {
+    if (input._flatpickr) input._flatpickr.setDate(input.value || null, false);
+  });
+  scope.querySelectorAll('select').forEach((el) => {
+    if (!el.tomselect) return;
+    // Tom Select builds its option registry once at init time and never
+    // notices <option> elements Alpine adds later (e.g. an x-for list that
+    // finishes loading after Tom Select attached) — sync() rebuilds that
+    // registry from the underlying <select> before selecting the value.
+    el.tomselect.sync();
+    el.tomselect.setValue(el.value, true);
+  });
+}
+
+/** Tom Select for every not-yet-initialized <select> in the document.
+ *  A select marked data-tom-create="true" additionally lets the user
+ *  type a value that isn't in the option list yet (e.g. picking from
+ *  previously-used values while still allowing a brand new one). */
 export function initSelects() {
   if (!window.TomSelect) return;
   document
     .querySelectorAll('select:not(.swal2-select):not([data-no-tom]):not(.tom-selected)')
     .forEach((el) => {
-      new window.TomSelect(el, { create: false, sortField: { field: 'text', direction: 'asc' } });
+      const create = el.dataset.tomCreate === 'true';
+      new window.TomSelect(el, { create, sortField: { field: 'text', direction: 'asc' } });
       el.classList.add('tom-selected');
     });
 }

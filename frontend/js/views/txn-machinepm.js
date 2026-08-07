@@ -51,8 +51,7 @@ const baseResource = createTxnResource({
 });
 
 function machinePmComponent() {
-  return {
-    ...baseResource(),
+  return Object.assign(baseResource(), {
     calcDowntime() {
       if (!this.form.start_time || !this.form.end_time) return;
       const [sh, sm] = this.form.start_time.split(':').map(Number);
@@ -61,7 +60,7 @@ function machinePmComponent() {
       if (diff < 0) diff += 24 * 60;
       this.form.downtime = diff;
     },
-  };
+  });
 }
 
 document.addEventListener('alpine:init', () => {

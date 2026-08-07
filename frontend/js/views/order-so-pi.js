@@ -3,13 +3,16 @@
 // together in one modal: header fields + a repeatable line-items table.
 import { registerView } from '../router.js';
 import { supabase } from '../lib/supabaseClient.js';
-import { alertError, toastSuccess, formatDate, getLocalDate } from '../lib/ui-helpers.js';
+import { alertError, toastSuccess, formatDate, getLocalDate, syncPickers } from '../lib/ui-helpers.js';
 
-const PACKING_OPTIONS = [24, 28, 50, 100];
+const PACKING_OPTIONS = [24, 48, 50, 100];
 
 function emptyItem() {
-  return { product_id: '', brand_id: '', cansize_id: '', packing: '', shrink_pack: '', rtd: '', qty: 0 };
+  return { product_id: '', brand_id: '', cansize_id: '', packing: '', shrink_pack: '', rtd: '', qty: 0, unit_price: 0 };
 }
+
+const INCOTERMS = ['FOB', 'CRF', 'CNF', 'FAS'];
+const CURRENCIES = ['USD', 'THB'];
 
 const PARTY_ROLES = [
   { field: 'consignee_id', status: 'CONSIGNEE', label: 'CONSIGNEE' },
@@ -22,7 +25,7 @@ function component() {
     loading: false,
     saving: false,
     rows: [],
-    extra: { customers: [], brands: [], products: [], canSizes: [] },
+    extra: { customers: [], brands: [], products: [], canSizes: [], destinations: [] },
     searchStart: '',
     searchEnd: '',
     searchText: '',
@@ -40,13 +43,15 @@ function component() {
 
     async loadExtra() {
       try {
-        const [{ data: customers }, { data: brands }, { data: products }, { data: canSizes }] = await Promise.all([
+        const [{ data: customers }, { data: brands }, { data: products }, { data: canSizes }, { data: destRows }] = await Promise.all([
           supabase.from('customers').select('id, customer_code, customer_name, business_name, address, phone, status').order('customer_name'),
           supabase.from('brands').select('id, brand_name').order('brand_name'),
           supabase.from('products').select('id, product_name').order('product_name'),
           supabase.from('can_sizes').select('id, cansize_name').order('cansize_name'),
+          supabase.from('so_pi').select('destination').not('destination', 'is', null),
         ]);
-        this.extra = { customers: customers || [], brands: brands || [], products: products || [], canSizes: canSizes || [] };
+        const destinations = [...new Set((destRows || []).map((r) => r.destination).filter(Boolean))].sort();
+        this.extra = { customers: customers || [], brands: brands || [], products: products || [], canSizes: canSizes || [], destinations };
       } catch (err) {
         alertError(err);
       }
@@ -99,38 +104,57 @@ function component() {
       this.currentId = null;
       this.form = {
         doc_type: 'SO', doc_no: '', doc_date: getLocalDate(), customer_id: '',
-        box_qty: '', box_type: '', container_qty: '',
+        box_qty: '', incoterm_select: '', incoterm_custom: '', container_qty: '',
         port_select: '', port_custom: '',
-        destination: '', agent: '',
+        destination: '', delivery_due_date: '',
         etd_month_only: false, etd_on_po: '', etd_month_value: '',
-        payment_term_select: '', payment_term_custom: '',
+        payment_term_select: '', payment_term_custom: '', deposit_date: '',
         consignee_id: '', buyer_id: '', notify_party_id: '',
+        discount: '', vat_percent: '', currency_select: '', currency_custom: '',
       };
       this.items = [emptyItem()];
       this.modalOpen = true;
+      this.$nextTick(() => syncPickers(this.$root));
     },
 
-    openEdit(row) {
+    async openEdit(row) {
       this.isEdit = true;
       this.currentId = row.id;
-      const knownPorts = ['SONGKHLA', 'BKK'];
+      const knownPorts = ['SONGKHLA', 'BKK', 'หน้าโรงงาน'];
       const port = row.port || '';
       const knownTerms = ['Deposit', 'Non Deposit', 'LC'];
       const term = row.payment_term || '';
+      const incoterm = row.incoterm || '';
+      const currency = row.currency || '';
       this.form = {
         doc_type: row.doc_type, doc_no: row.doc_no, doc_date: row.doc_date, customer_id: row.customer_id || '',
-        box_qty: row.box_qty ?? '', box_type: row.box_type || '', container_qty: row.container_qty ?? '',
+        box_qty: row.box_qty ?? '',
+        incoterm_select: incoterm && !INCOTERMS.includes(incoterm) ? '__other__' : incoterm,
+        incoterm_custom: incoterm && !INCOTERMS.includes(incoterm) ? incoterm : '',
+        container_qty: row.container_qty ?? '',
         port_select: port && !knownPorts.includes(port) ? '__other__' : port,
         port_custom: port && !knownPorts.includes(port) ? port : '',
-        destination: row.destination || '', agent: row.agent || '',
+        destination: row.destination || '', delivery_due_date: row.delivery_due_date || '',
         etd_month_only: !!row.etd_month_only,
         etd_on_po: row.etd_on_po || '',
         etd_month_value: row.etd_on_po ? String(row.etd_on_po).slice(0, 7) : '',
         payment_term_select: term && !knownTerms.includes(term) ? '__other__' : term,
         payment_term_custom: term && !knownTerms.includes(term) ? term : '',
+        deposit_date: row.deposit_date || '',
         consignee_id: row.consignee_id || '', buyer_id: row.buyer_id || '', notify_party_id: row.notify_party_id || '',
+        discount: row.discount ?? '', vat_percent: row.vat_percent ?? '',
+        currency_select: currency && !CURRENCIES.includes(currency) ? '__other__' : currency,
+        currency_custom: currency && !CURRENCIES.includes(currency) ? currency : '',
       };
-      this.items = (row.so_pi_items && row.so_pi_items.length ? row.so_pi_items : [emptyItem()]).map((it) => ({
+      const { data: fullItems, error: itemsErr } = await supabase
+        .from('so_pi_items')
+        .select('product_id, brand_id, cansize_id, packing, shrink_pack, rtd, qty, unit_price')
+        .eq('so_pi_id', row.id);
+      if (itemsErr) {
+        alertError(itemsErr);
+        return;
+      }
+      this.items = (fullItems && fullItems.length ? fullItems : [emptyItem()]).map((it) => ({
         product_id: it.product_id || '',
         brand_id: it.brand_id || '',
         cansize_id: it.cansize_id || '',
@@ -138,8 +162,10 @@ function component() {
         shrink_pack: it.shrink_pack || '',
         rtd: it.rtd || '',
         qty: it.qty ?? 0,
+        unit_price: it.unit_price ?? 0,
       }));
       this.modalOpen = true;
+      this.$nextTick(() => syncPickers(this.$root));
     },
 
     closeModal() {
@@ -152,6 +178,18 @@ function component() {
     removeItemRow(idx) {
       if (this.items.length <= 1) return;
       this.items.splice(idx, 1);
+    },
+
+    lineTotal(item) {
+      return Number(item.qty || 0) * Number(item.unit_price || 0);
+    },
+    get subtotal() {
+      return this.items.reduce((s, it) => s + this.lineTotal(it), 0);
+    },
+    get netTotal() {
+      const discounted = this.subtotal - Number(this.form.discount || 0);
+      const vat = discounted * (Number(this.form.vat_percent || 0) / 100);
+      return discounted + vat;
     },
 
     async save() {
@@ -167,6 +205,8 @@ function component() {
 
       const port = this.form.port_select === '__other__' ? (this.form.port_custom || '').trim() : this.form.port_select;
       const paymentTerm = this.form.payment_term_select === '__other__' ? (this.form.payment_term_custom || '').trim() : this.form.payment_term_select;
+      const incoterm = this.form.incoterm_select === '__other__' ? (this.form.incoterm_custom || '').trim() : this.form.incoterm_select;
+      const currency = this.form.currency_select === '__other__' ? (this.form.currency_custom || '').trim() : this.form.currency_select;
       const etdOnPo = this.form.etd_month_only ? (this.form.etd_month_value ? `${this.form.etd_month_value}-01` : null) : this.form.etd_on_po || null;
 
       const headerPayload = {
@@ -175,17 +215,21 @@ function component() {
         doc_date: this.form.doc_date,
         customer_id: this.form.customer_id || null,
         box_qty: this.form.box_qty === '' ? null : Number(this.form.box_qty),
-        box_type: this.form.box_type || null,
+        incoterm: incoterm || null,
         container_qty: this.form.container_qty === '' ? null : Number(this.form.container_qty),
         port: port || null,
         destination: this.form.destination || null,
-        agent: this.form.agent || null,
+        delivery_due_date: this.form.delivery_due_date || null,
         etd_month_only: !!this.form.etd_month_only,
         etd_on_po: etdOnPo,
         payment_term: paymentTerm || null,
+        deposit_date: this.form.deposit_date || null,
         consignee_id: this.form.consignee_id || null,
         buyer_id: this.form.buyer_id || null,
         notify_party_id: this.form.notify_party_id || null,
+        discount: this.form.discount === '' ? null : Number(this.form.discount),
+        vat_percent: this.form.vat_percent === '' ? null : Number(this.form.vat_percent),
+        currency: currency || null,
       };
 
       this.saving = true;
@@ -211,6 +255,7 @@ function component() {
           shrink_pack: it.shrink_pack || null,
           rtd: it.rtd || null,
           qty: Number(it.qty || 0),
+          unit_price: Number(it.unit_price || 0),
         }));
         const { error: insErr } = await supabase.from('so_pi_items').insert(itemsPayload);
         if (insErr) throw new Error(insErr.message);
@@ -256,15 +301,15 @@ document.addEventListener('alpine:init', () => {
 const itemRowTemplate = `
   <tr class="border-b border-gray-100">
     <td class="p-1">
-      <select x-model="item.product_id" class="form-control text-xs" data-no-tom>
-        <option value="">-- สินค้า --</option>
-        <template x-for="p in extra.products" :key="p.id"><option :value="p.id" x-text="p.product_name"></option></template>
-      </select>
-    </td>
-    <td class="p-1">
       <select x-model="item.brand_id" class="form-control text-xs" data-no-tom>
         <option value="">-- Brand --</option>
         <template x-for="b in extra.brands" :key="b.id"><option :value="b.id" x-text="b.brand_name"></option></template>
+      </select>
+    </td>
+    <td class="p-1">
+      <select x-model="item.product_id" class="form-control text-xs" data-no-tom>
+        <option value="">-- Description of Goods --</option>
+        <template x-for="p in extra.products" :key="p.id"><option :value="p.id" x-text="p.product_name"></option></template>
       </select>
     </td>
     <td class="p-1">
@@ -276,7 +321,7 @@ const itemRowTemplate = `
     <td class="p-1">
       <select x-model.number="item.packing" class="form-control text-xs" data-no-tom>
         <option value="">-</option>
-        <template x-for="p in [24,28,50,100]" :key="p"><option :value="p" x-text="p"></option></template>
+        <template x-for='p in ${JSON.stringify(PACKING_OPTIONS)}' :key="p"><option :value="p" x-text="p"></option></template>
       </select>
     </td>
     <td class="p-1">
@@ -296,6 +341,8 @@ const itemRowTemplate = `
       </select>
     </td>
     <td class="p-1"><input type="number" min="0" x-model.number="item.qty" class="form-control text-xs w-20"></td>
+    <td class="p-1"><input type="number" step="0.01" min="0" x-model.number="item.unit_price" class="form-control text-xs w-24"></td>
+    <td class="p-1 text-right whitespace-nowrap" x-text="lineTotal(item).toLocaleString(undefined,{minimumFractionDigits:2})"></td>
     <td class="p-1 text-center">
       <button type="button" class="text-danger px-1" @click="removeItemRow(idx)" title="ลบรายการ"><i class="fa-solid fa-trash"></i></button>
     </td>
@@ -351,7 +398,7 @@ registerView('order-so-pi', async (container) => {
     <!-- Add / Edit modal -->
     <div class="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/50" x-show="modalOpen" x-cloak
          @click.self="closeModal()" @keydown.escape.window="closeModal()">
-      <div class="modal-panel w-full max-w-5xl">
+      <div class="modal-panel w-full max-w-6xl">
         <form @submit.prevent="save()">
           <div class="flex items-center justify-between px-5 py-4 border-b">
             <h3 class="font-bold text-gray-800" x-text="isEdit ? 'แก้ไขคำสั่งซื้อ SO/PI' : 'เพิ่มคำสั่งซื้อ SO/PI'"></h3>
@@ -368,7 +415,7 @@ registerView('order-so-pi', async (container) => {
                   </select>
                 </div>
                 <div><label class="form-label">เลขที่ SO/PI</label><input type="text" x-model="form.doc_no" required class="form-control" data-no-flatpickr></div>
-                <div><label class="form-label">วันที่</label><input type="date" x-model="form.doc_date" required class="form-control"></div>
+                <div><label class="form-label">วันที่ SO</label><input type="date" x-model="form.doc_date" required class="form-control"></div>
                 <div>
                   <label class="form-label">ลูกค้า</label>
                   <select x-model="form.customer_id" class="form-control" data-no-tom>
@@ -384,9 +431,17 @@ registerView('order-so-pi', async (container) => {
               <div class="overflow-x-auto">
                 <div class="grid grid-cols-4 gap-4 mb-4 min-w-[640px]">
                   <div><label class="form-label">จำนวนกล่อง</label><input type="number" min="0" x-model.number="form.box_qty" class="form-control"></div>
-                  <div><label class="form-label">รูปแบบกล่อง</label><input type="text" x-model="form.box_type" class="form-control" data-no-flatpickr></div>
+                  <div>
+                    <label class="form-label">Incoterm</label>
+                    <select x-model="form.incoterm_select" class="form-control" data-no-tom>
+                      <option value="">-- เลือก Incoterm --</option>
+                      <template x-for='t in ${JSON.stringify(INCOTERMS)}' :key="t"><option :value="t" x-text="t"></option></template>
+                      <option value="__other__">อื่นๆ (ระบุ)</option>
+                    </select>
+                    <input type="text" x-show="form.incoterm_select === '__other__'" x-cloak x-model="form.incoterm_custom" placeholder="ระบุ Incoterm" class="form-control mt-2" data-no-flatpickr>
+                  </div>
                   <div><label class="form-label">จำนวนตู้ (FCL)</label><input type="number" min="0" x-model.number="form.container_qty" class="form-control"></div>
-                  <div><label class="form-label">Agent</label><input type="text" x-model="form.agent" class="form-control" data-no-flatpickr></div>
+                  <div><label class="form-label">DUE DATE (วันกำหนดส่งมอบ)</label><input type="date" x-model="form.delivery_due_date" class="form-control"></div>
                 </div>
                 <div class="grid grid-cols-4 gap-4 mb-4 min-w-[640px]">
                   <div>
@@ -395,11 +450,18 @@ registerView('order-so-pi', async (container) => {
                       <option value="">-- เลือกท่าเรือ --</option>
                       <option value="SONGKHLA">SONGKHLA</option>
                       <option value="BKK">BKK</option>
+                      <option value="หน้าโรงงาน">หน้าโรงงาน</option>
                       <option value="__other__">อื่นๆ (ระบุ)</option>
                     </select>
                     <input type="text" x-show="form.port_select === '__other__'" x-cloak x-model="form.port_custom" placeholder="ระบุชื่อท่าเรือ" class="form-control mt-2" data-no-flatpickr>
                   </div>
-                  <div><label class="form-label">ปลายทาง (Port of Discharge)</label><input type="text" x-model="form.destination" class="form-control" data-no-flatpickr></div>
+                  <div>
+                    <label class="form-label">ปลายทาง (Port of Discharge)</label>
+                    <select x-model="form.destination" class="form-control" data-tom-create="true">
+                      <option value="">-- เลือกหรือพิมพ์ปลายทางใหม่ --</option>
+                      <template x-for="d in extra.destinations" :key="d"><option :value="d" x-text="d"></option></template>
+                    </select>
+                  </div>
                   <div>
                     <label class="form-label flex items-center justify-between">
                       <span>ETD ON PO</span>
@@ -420,6 +482,10 @@ registerView('order-so-pi', async (container) => {
                       <option value="__other__">อื่นๆ (ระบุ)</option>
                     </select>
                     <input type="text" x-show="form.payment_term_select === '__other__'" x-cloak x-model="form.payment_term_custom" placeholder="ระบุ Payment Term" class="form-control mt-2" data-no-flatpickr>
+                    <div x-show="form.payment_term_select === 'Deposit'" x-cloak class="mt-2">
+                      <label class="form-label text-xs">Deposit Date</label>
+                      <input type="date" x-model="form.deposit_date" class="form-control">
+                    </div>
                   </div>
                 </div>
               </div>
@@ -457,12 +523,12 @@ registerView('order-so-pi', async (container) => {
                 <button type="button" class="btn btn-secondary btn-sm" @click="addItemRow()"><i class="fa-solid fa-plus"></i> เพิ่มรายการ</button>
               </div>
               <div class="overflow-x-auto">
-                <table class="w-full text-xs border-collapse min-w-[660px]">
+                <table class="w-full text-xs border-collapse min-w-[1000px]">
                   <thead>
                     <tr class="bg-gray-50 text-gray-600 text-left">
-                      <th class="p-1">รหัสสินค้า</th><th class="p-1">BRAND</th><th class="p-1">CAN SIZE</th>
-                      <th class="p-1">Packing</th><th class="p-1">Shrink Pack</th><th class="p-1">RTD</th>
-                      <th class="p-1">จำนวน</th><th class="p-1"></th>
+                      <th class="p-1 w-20">BRAND</th><th class="p-1 w-64">Description of Goods</th><th class="p-1 w-20">CAN SIZE</th>
+                      <th class="p-1 w-[77px]">Packing</th><th class="p-1 w-[88px]">Shrink Pack</th><th class="p-1 w-[88px]">RTD</th>
+                      <th class="p-1">จำนวน</th><th class="p-1">ราคาต่อหน่วย</th><th class="p-1">ราคารวม</th><th class="p-1"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -471,6 +537,34 @@ registerView('order-so-pi', async (container) => {
                     </template>
                   </tbody>
                 </table>
+              </div>
+              <div class="flex justify-end mt-3">
+                <div class="w-full max-w-xs space-y-1.5 text-sm">
+                  <div class="flex justify-between items-center gap-2">
+                    <label class="text-gray-600 shrink-0">สกุลเงิน (Currency)</label>
+                    <div class="flex items-center gap-3">
+                      <template x-for='c in ${JSON.stringify(CURRENCIES)}' :key="c">
+                        <label class="flex items-center gap-1 font-normal cursor-pointer">
+                          <input type="radio" name="soPiCurrency" :value="c" x-model="form.currency_select"><span x-text="c"></span>
+                        </label>
+                      </template>
+                      <label class="flex items-center gap-1 font-normal cursor-pointer">
+                        <input type="radio" name="soPiCurrency" value="__other__" x-model="form.currency_select"><span>อื่นๆ</span>
+                      </label>
+                    </div>
+                  </div>
+                  <input type="text" x-show="form.currency_select === '__other__'" x-cloak x-model="form.currency_custom" placeholder="ระบุสกุลเงิน" class="form-control text-sm" data-no-flatpickr>
+                  <div class="flex justify-between items-center"><span class="text-gray-600">Subtotal</span><span class="font-semibold" x-text="subtotal.toLocaleString(undefined,{minimumFractionDigits:2})"></span></div>
+                  <div class="flex justify-between items-center gap-2">
+                    <label class="text-gray-600 shrink-0">Discount</label>
+                    <input type="number" step="0.01" min="0" x-model.number="form.discount" class="form-control text-sm w-28 text-right">
+                  </div>
+                  <div class="flex justify-between items-center gap-2">
+                    <label class="text-gray-600 shrink-0">VAT (%)</label>
+                    <input type="number" step="0.01" min="0" x-model.number="form.vat_percent" class="form-control text-sm w-28 text-right">
+                  </div>
+                  <div class="flex justify-between items-center pt-1.5 border-t"><span class="font-bold text-gray-800">ราคาสุทธิ</span><span class="font-bold text-primary" x-text="netTotal.toLocaleString(undefined,{minimumFractionDigits:2})"></span></div>
+                </div>
               </div>
             </div>
           </div>

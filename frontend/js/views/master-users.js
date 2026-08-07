@@ -59,15 +59,14 @@ const baseResource = createCrudResource({
 });
 
 function usersCrudComponent() {
-  return {
-    ...baseResource(),
+  return Object.assign(baseResource(), {
     roleLabel(role) {
       return ROLE_LABELS[role] || role;
     },
     roleBadgeClass(role) {
       return role === 'admin' ? 'bg-danger text-white' : 'bg-secondary text-white bg-slate-500';
     },
-  };
+  });
 }
 
 document.addEventListener('alpine:init', () => {

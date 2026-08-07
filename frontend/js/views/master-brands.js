@@ -22,8 +22,7 @@ const baseResource = createCrudResource({
 });
 
 function brandsCrudComponent() {
-  return {
-    ...baseResource(),
+  return Object.assign(baseResource(), {
     customerOptions: [],
     async init() {
       await Promise.all([
@@ -38,7 +37,7 @@ function brandsCrudComponent() {
           .catch((err) => alertError(err)),
       ]);
     },
-  };
+  });
 }
 
 document.addEventListener('alpine:init', () => {

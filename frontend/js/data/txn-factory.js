@@ -6,7 +6,7 @@
 // view-specific lookup data (open batches, brands, suppliers, machines)
 // via config.loadExtra().
 import { supabase } from '../lib/supabaseClient.js';
-import { alertError, toastSuccess, confirmDelete, formatDate } from '../lib/ui-helpers.js';
+import { alertError, toastSuccess, confirmDelete, formatDate, syncPickers } from '../lib/ui-helpers.js';
 
 /**
  * @param {object} config
@@ -102,12 +102,14 @@ export function createTxnResource(config) {
       this.isEdit = false;
       this.form = config.emptyForm();
       this.modalOpen = true;
+      this.$nextTick(() => syncPickers(this.$root));
     },
 
     openEdit(item) {
       this.isEdit = true;
       this.form = config.toForm(item);
       this.modalOpen = true;
+      this.$nextTick(() => syncPickers(this.$root));
     },
 
     closeModal() {

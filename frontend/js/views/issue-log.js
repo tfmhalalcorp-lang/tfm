@@ -38,15 +38,14 @@ const baseResource = createTxnResource({
 });
 
 function issueLogComponent() {
-  return {
-    ...baseResource(),
+  return Object.assign(baseResource(), {
     deptLabel(d) {
       return DEPT_LABELS[d] || d;
     },
     deptClass(d) {
       return DEPT_COLORS[d] || 'bg-gray-100 text-gray-600';
     },
-  };
+  });
 }
 
 document.addEventListener('alpine:init', () => {

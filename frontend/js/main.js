@@ -43,6 +43,7 @@ import './views/report-fillweight.js';
 import './views/report-qc.js';
 import './views/report-maintenance.js';
 import './views/report-rm-price.js';
+import './views/report-sales-order.js';
 
 document.addEventListener('alpine:init', () => {
   Alpine.store('auth')
