@@ -7,14 +7,22 @@ const resource = createCrudResource({
   searchPredicate: (item, q) =>
     (item.supplier_code || '').toLowerCase().includes(q) ||
     (item.supplier_name || '').toLowerCase().includes(q) ||
-    (item.fish_type || '').toLowerCase().includes(q),
-  emptyForm: () => ({ id: null, supplier_code: '', supplier_name: '', fish_type: '' }),
-  toForm: (item) => ({ id: item.id, supplier_code: item.supplier_code, supplier_name: item.supplier_name, fish_type: item.fish_type || '' }),
+    (item.fish_type || '').toLowerCase().includes(q) ||
+    (item.can_type || '').toLowerCase().includes(q),
+  emptyForm: () => ({ id: null, supplier_code: '', supplier_name: '', fish_type: '', can_type: '' }),
+  toForm: (item) => ({
+    id: item.id,
+    supplier_code: item.supplier_code,
+    supplier_name: item.supplier_name,
+    fish_type: item.fish_type || '',
+    can_type: item.can_type || '',
+  }),
   validate: (form) => (!form.supplier_code || !form.supplier_name ? 'กรุณากรอกข้อมูลให้ครบ' : null),
   toPayload: (form) => ({
     supplier_code: form.supplier_code.trim(),
     supplier_name: form.supplier_name.trim(),
     fish_type: (form.fish_type || '').trim(),
+    can_type: (form.can_type || '').trim(),
   }),
 });
 
@@ -27,13 +35,14 @@ registerView('settings-supplier', async (container) => {
     dataComponent: 'suppliersCrud',
     title: 'จัดการข้อมูลผู้ขาย (Supplier)',
     searchPlaceholder: 'ค้นหา รหัส, ชื่อผู้ขาย หรือ ชนิดปลา...',
-    theadHtml: `<th class="px-3 py-2">รหัส</th><th class="px-3 py-2">ชื่อผู้ขาย</th><th class="px-3 py-2">ชนิดปลา</th>`,
+    theadHtml: `<th class="px-3 py-2">รหัส</th><th class="px-3 py-2">ชื่อผู้ขาย</th><th class="px-3 py-2">ชนิดปลา</th><th class="px-3 py-2">ชนิด/ขนาดกระป๋อง</th>`,
     rowHtml: `
       <td class="px-3 py-2 font-mono text-xs" x-text="item.supplier_code"></td>
       <td class="px-3 py-2" x-text="item.supplier_name"></td>
       <td class="px-3 py-2" x-text="item.fish_type || '-'"></td>
+      <td class="px-3 py-2" x-text="item.can_type || '-'"></td>
     `,
-    colCount: 4,
+    colCount: 5,
     modalTitleAdd: 'เพิ่มผู้ขาย',
     modalTitleEdit: 'แก้ไขข้อมูลผู้ขาย',
     modalFieldsHtml: `
@@ -49,6 +58,10 @@ registerView('settings-supplier', async (container) => {
       <div>
         <label class="form-label">ชนิดปลา (ถ้ามี)</label>
         <input type="text" x-model="form.fish_type" class="form-control" data-no-flatpickr>
+      </div>
+      <div>
+        <label class="form-label">ชนิด/ขนาดกระป๋อง (ถ้ามี)</label>
+        <input type="text" x-model="form.can_type" class="form-control" data-no-flatpickr>
       </div>
     `,
     modalWidthClass: 'max-w-md',

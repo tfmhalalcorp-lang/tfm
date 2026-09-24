@@ -21,7 +21,7 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const AUTH_EMAIL_DOMAIN = process.env.AUTH_EMAIL_DOMAIN || 'tfm-internal.app';
 
 const USERNAME_RE = /^[a-z0-9_.-]{3,32}$/;
-const ROLES = ['admin', 'prod', 'wh', 'qc', 'ma', 'rpt'];
+const ROLES = ['admin', 'pd', 'wh', 'qc', 'ma', 'sale'];
 
 function json(statusCode, body) {
   return {

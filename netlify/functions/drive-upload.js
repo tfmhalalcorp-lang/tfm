@@ -11,7 +11,7 @@
 //
 // Every request is verified server-side: the bearer token must belong to a
 // real, current session, and that session's profile.role must be 'admin'
-// (same gate as the delivery-docs storage policies this replaces).
+// or 'sale' (order-desk users manage the delivery/BL flow too).
 //
 // Required env vars (Netlify site settings):
 //   GOOGLE_SERVICE_ACCOUNT_EMAIL  — service account's client_email
@@ -95,15 +95,14 @@ exports.handler = async (event) => {
     return json(401, { success: false, error: 'Invalid or expired session' });
   }
 
-  // 2. Verify the caller is an admin (same gate as the delivery-docs
-  //    storage policies this endpoint replaces).
+  // 2. Verify the caller is an admin or sale (order-desk) user.
   const { data: callerProfile, error: profileErr } = await supabaseAdmin
     .from('profiles')
     .select('role')
     .eq('id', userData.user.id)
     .single();
-  if (profileErr || !callerProfile || callerProfile.role !== 'admin') {
-    return json(403, { success: false, error: 'Forbidden: admin role required' });
+  if (profileErr || !callerProfile || !['admin', 'sale'].includes(callerProfile.role)) {
+    return json(403, { success: false, error: 'Forbidden: admin or sale role required' });
   }
 
   try {

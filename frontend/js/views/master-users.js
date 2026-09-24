@@ -4,11 +4,11 @@ import { supabase, callFunction } from '../lib/supabaseClient.js';
 
 const ROLE_LABELS = {
   admin: 'Admin (ผู้ดูแลระบบ)',
-  prod: 'PD (ฝ่ายผลิต)',
+  pd: 'PD (ฝ่ายผลิต)',
   wh: 'WH (คลังสินค้า)',
   qc: 'QC (ตรวจสอบคุณภาพ)',
   ma: 'MA (ซ่อมบำรุง)',
-  rpt: 'RPT (ดูรายงาน)',
+  sale: 'SALE (ฝ่ายขาย/คำสั่งซื้อ)',
 };
 
 const baseResource = createCrudResource({
@@ -16,7 +16,7 @@ const baseResource = createCrudResource({
   orderBy: 'username',
   searchPredicate: (item, q) =>
     (item.username || '').toLowerCase().includes(q) || (item.fullname || '').toLowerCase().includes(q),
-  emptyForm: () => ({ id: null, username: '', password: '', fullname: '', role: 'rpt' }),
+  emptyForm: () => ({ id: null, username: '', password: '', fullname: '', role: 'sale' }),
   toForm: (item) => ({ id: item.id, username: item.username, password: '', fullname: item.fullname, role: item.role }),
   validate: (form, isEdit) => {
     if (!form.fullname) return 'กรุณากรอกข้อมูลให้ครบถ้วน';
@@ -106,11 +106,11 @@ registerView('settings-user', async (container) => {
         <label class="form-label">สิทธิ์การใช้งาน (Role)</label>
         <select x-model="form.role" required class="form-control" data-no-tom>
           <option value="admin">admin - ดูได้ทุกเมนู</option>
-          <option value="prod">prod - PD - dashboard + production + Report</option>
-          <option value="wh">wh - WH - dashboard + warehouse + Report</option>
-          <option value="qc">qc - QC - dashboard + QC + Report</option>
-          <option value="ma">ma - MA - dashboard + MA + Report</option>
-          <option value="rpt">rpt - RPT - dashboard + Report</option>
+          <option value="pd">pd - PD - Dashboard + Production + Report</option>
+          <option value="wh">wh - WH - Warehouse + Report</option>
+          <option value="qc">qc - QC - QC + Report</option>
+          <option value="ma">ma - MA - Maintenance + Report</option>
+          <option value="sale">sale - SALE - จัดการคำสั่งซื้อ + Report</option>
         </select>
       </div>
     `,

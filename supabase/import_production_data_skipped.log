@@ -1,0 +1,80 @@
+Rows skipped (or adjusted) while converting TFM Production DB.xlsx -> import_production_data.sql
+========================================================================================
+
+## prod_batches
+SKIP prod_batches row 197: duplicate batch_id '276MIGZ5' (first seen at row 190; this row's cansize='202x308' brand='B grade(PDS)' — dropped, kept the first one)
+SKIP prod_batches row 445: duplicate batch_id '49VMALZ7' (first seen at row 436; this row's cansize='300x407' brand='LSS' — dropped, kept the first one)
+TOTAL: 958 inserted, 2 skipped
+
+## prod_rm
+SKIP prod_rm row 52: batch_id '38XSKEZ1' not found in prod_batches
+SKIP prod_rm row 163: batch_id 'O1VMAGZ1' not found in prod_batches
+SKIP prod_rm row 879: missing required field(s) (date/batch/supplier)
+SKIP prod_rm row 884: batch_id '494SAMZ1' not found in prod_batches
+SKIP prod_rm row 904: batch_id 'B23MNLZ9(PDS)' not found in prod_batches
+SKIP prod_rm row 918: batch_id 'CH4MOLZ7(PDS)' not found in prod_batches
+SKIP prod_rm row 922: batch_id 'CH4MOLZ7(PDS)' not found in prod_batches
+TOTAL: 1976 inserted, 7 skipped
+
+## prod_fillw
+SKIP prod_fillw row 139: batch_id 'O1VMAGZ1' not found in prod_batches
+SKIP prod_fillw row 272: batch_id '492MMIZ9O1' not found in prod_batches
+SKIP prod_fillw row 273: batch_id '492MMIZ9O' not found in prod_batches
+SKIP prod_fillw row 275: batch_id '424SKIZ9O' not found in prod_batches
+SKIP prod_fillw row 276: batch_id '274SMIZ9' not found in prod_batches
+SKIP prod_fillw row 277: batch_id '383SMIZ9' not found in prod_batches
+SKIP prod_fillw row 438: batch_id 'B23MNLZ9(PDS)' not found in prod_batches
+SKIP prod_fillw row 444: batch_id 'CH4MOLZ7(PDS)' not found in prod_batches
+SKIP prod_fillw row 656: batch_id '42VSOOZ9' not found in prod_batches
+TOTAL: 867 inserted, 9 skipped
+
+## prod_can
+SKIP prod_can row 7: batch_id 'B24MEZ1PO' not found in prod_batches
+SKIP prod_can row 73: batch_id '414SAFZ1' not found in prod_batches
+SKIP prod_can row 144: batch_id 'O1VMAGZ1' not found in prod_batches
+SKIP prod_can row 289: batch_id '492MMIZ9O1' not found in prod_batches
+SKIP prod_can row 290: batch_id '492MMIZ9O' not found in prod_batches
+SKIP prod_can row 292: batch_id '424SKIZ9O' not found in prod_batches
+SKIP prod_can row 293: batch_id '274SMIZ9' not found in prod_batches
+SKIP prod_can row 294: batch_id '383SMIZ9' not found in prod_batches
+SKIP prod_can row 403: batch_id '423SKKZ9' not found in prod_batches
+SKIP prod_can row 486: batch_id 'B23MNLZ9(PDS)' not found in prod_batches
+SKIP prod_can row 493: batch_id 'CH4MOLZ7(PDS)' not found in prod_batches
+SKIP prod_can row 496: batch_id '494SAMZ1' not found in prod_batches
+SKIP prod_can row 628: batch_id '42VMNPMZ5' not found in prod_batches
+TOTAL: 891 inserted, 13 skipped
+
+## prod_fillq
+SKIP prod_fillq row 9: batch_id 'B24MEZ1PO' not found in prod_batches
+SKIP prod_fillq row 70: batch_id '414SAFZ1' not found in prod_batches
+SKIP prod_fillq row 141: batch_id 'O1VMAGZ1' not found in prod_batches
+SKIP prod_fillq row 453: batch_id 'B23MNLZ9(PDS)' not found in prod_batches
+SKIP prod_fillq row 461: batch_id 'B23MNLZ9(PDS)' not found in prod_batches
+SKIP prod_fillq row 468: batch_id 'CH4MOLZ7(PDS)' not found in prod_batches
+SKIP prod_fillq row 471: batch_id '494SAMZ1' not found in prod_batches
+SKIP prod_fillq row 589: missing required field(s) (date/batch)
+SKIP prod_fillq row 606: batch_id '42VMNPMZ5' not found in prod_batches
+SKIP prod_fillq row 878: missing required field(s) (date/batch)
+SKIP prod_fillq row 880: missing required field(s) (date/batch)
+TOTAL: 911 inserted, 11 skipped
+
+## wh_in
+TOTAL: 2 inserted, 0 skipped
+
+## qc_waste
+SKIP qc_waste row 2: missing/invalid department (batch=123456789)
+NOTE qc_waste row 32: batch_id '384MBFZ50' not found in prod_batches — imported with batch_id = NULL
+NOTE qc_waste row 258: batch_id '423SKKZ9' not found in prod_batches — imported with batch_id = NULL
+NOTE qc_waste row 518: batch_id '276MNNZ7' not found in prod_batches — imported with batch_id = NULL
+NOTE qc_waste row 528: batch_id '42VMNPMZ5' not found in prod_batches — imported with batch_id = NULL
+NOTE qc_waste row 534: batch_id '257MAOZ7' not found in prod_batches — imported with batch_id = NULL
+NOTE qc_waste row 610: batch_id '274MNOZ9' not found in prod_batches — imported with batch_id = NULL
+NOTE qc_waste row 616: batch_id '42VSOOZ9' not found in prod_batches — imported with batch_id = NULL
+NOTE qc_waste row 793: batch_id '49WJQZ9' not found in prod_batches — imported with batch_id = NULL
+TOTAL: 856 inserted, 1 skipped
+
+## machine_pm
+TOTAL: 22 inserted, 0 skipped
+
+## issue_log
+TOTAL: 2 inserted, 0 skipped

@@ -4,6 +4,7 @@
 // dispatches its 'alpine:init' event and calls Alpine.start().
 import './lib/auth.js';
 import './lib/role-access.js';
+import './lib/notifications-store.js';
 import { startUiObserver } from './lib/ui-observer.js';
 import './router.js';
 
@@ -13,6 +14,7 @@ import './views/master-brands.js';
 import './views/master-suppliers.js';
 import './views/master-cansizes.js';
 import './views/master-machines.js';
+import './views/master-sauces.js';
 import './views/master-users.js';
 import './views/master-products.js';
 
@@ -26,16 +28,19 @@ import './views/wh-load-ready.js';
 import './views/txn-batch.js';
 import './views/txn-rm.js';
 import './views/txn-can.js';
+import './views/txn-emptycan.js';
 import './views/txn-fillq.js';
 import './views/txn-fillw.js';
 import './views/txn-whin.js';
 import './views/txn-qcwaste.js';
+import './views/txn-sauce.js';
 import './views/txn-machinepm.js';
 import './views/issue-log.js';
 
 import './views/dashboard-main.js';
 import './views/dashboard-waste.js';
 import './views/dashboard-rm.js';
+import './views/dashboard-order-tracking.js';
 
 import './views/report-production.js';
 import './views/report-warehouse.js';
@@ -51,6 +56,7 @@ document.addEventListener('alpine:init', () => {
     .then(() => {
       if (Alpine.store('auth').isAuthenticated) {
         window.navigateTo('dashboard');
+        Alpine.store('notifications').refresh();
       }
     });
 });

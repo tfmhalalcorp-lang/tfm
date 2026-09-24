@@ -90,10 +90,53 @@ function qcWasteComponent(dept) {
   };
 }
 
+// MA (Maintenance) waste log — shares the same qc_waste table as the
+// other three departments, but with a much simpler form: no batch/can
+// size/waste-category breakdown, just a machine + a plain quantity.
+function makeMaWasteResource() {
+  return createTxnResource({
+    table: 'qc_waste',
+    dateField: 'qcwaste_date',
+    searchPredicate: (item, q) => (item.machines?.machine_name || '').toLowerCase().includes(q),
+    fetchItems: async () => {
+      const { data, error } = await supabase
+        .from('qc_waste')
+        .select('*, machines(machine_name)')
+        .eq('department', 'MA')
+        .order('qcwaste_date', { ascending: false });
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+    emptyForm: () => ({ id: null, qcwaste_date: '', department: 'MA', machine_id: '', waste_qty: 0 }),
+    toForm: (item) => ({
+      id: item.id,
+      qcwaste_date: item.qcwaste_date,
+      department: item.department,
+      machine_id: item.machine_id,
+      waste_qty: item.waste_qty,
+    }),
+    validate: (form) =>
+      !form.qcwaste_date || !form.machine_id || form.waste_qty === '' || form.waste_qty === null
+        ? 'กรุณากรอกข้อมูลให้ครบถ้วน'
+        : null,
+    toPayload: (form) => ({
+      qcwaste_date: form.qcwaste_date,
+      department: 'MA',
+      machine_id: form.machine_id,
+      waste_qty: Number(form.waste_qty || 0),
+    }),
+    loadExtra: async () => {
+      const { data: machines } = await supabase.from('machines').select('id, machine_name').order('machine_name');
+      return { machines: machines || [] };
+    },
+  });
+}
+
 document.addEventListener('alpine:init', () => {
   Alpine.data('qcWasteTxn_PD', () => qcWasteComponent('PD'));
   Alpine.data('qcWasteTxn_WH', () => qcWasteComponent('WH'));
   Alpine.data('qcWasteTxn_QC', () => qcWasteComponent('QC'));
+  Alpine.data('qcWasteTxn_MA', makeMaWasteResource());
 });
 
 function template(dataExpr, deptLabelTh) {
@@ -147,6 +190,35 @@ function template(dataExpr, deptLabelTh) {
   });
 }
 
+function templateMa() {
+  return txnListTemplate({
+    dataExpr: 'qcWasteTxn_MA',
+    title: 'บันทึกของเสีย - Waste Log (ซ่อมบำรุง / MA)',
+    theadHtml: `<th class="px-3 py-2">วันที่</th><th class="px-3 py-2">เครื่องจักร</th><th class="px-3 py-2 text-right">จำนวน (กระป๋อง)</th>`,
+    rowHtml: `
+      <td class="px-3 py-2 whitespace-nowrap" x-text="fmtDate(item.qcwaste_date)"></td>
+      <td class="px-3 py-2" x-text="item.machines?.machine_name || '-'"></td>
+      <td class="px-3 py-2 text-right font-semibold" x-text="Number(item.waste_qty).toLocaleString()"></td>
+    `,
+    colCount: 4,
+    modalTitleAdd: 'เพิ่มบันทึกของเสีย',
+    modalTitleEdit: 'แก้ไขบันทึกของเสีย',
+    modalFieldsHtml: `
+      <div><label class="form-label">วันที่</label><input type="date" x-model="form.qcwaste_date" required class="form-control"></div>
+      <div>
+        <label class="form-label">เครื่องจักร (Machine)</label>
+        <select x-model="form.machine_id" required class="form-control" data-no-tom>
+          <option value="">-- เลือกเครื่องจักร --</option>
+          <template x-for="m in extra.machines" :key="m.id"><option :value="m.id" x-text="m.machine_name"></option></template>
+        </select>
+      </div>
+      <div><label class="form-label">จำนวน (กระป๋อง)</label><input type="number" min="0" x-model.number="form.waste_qty" required class="form-control"></div>
+    `,
+    modalWidthClass: 'max-w-md',
+  });
+}
+
 registerView('qc-waste', async (container) => { container.innerHTML = template('qcWasteTxn_QC', 'QC'); });
 registerView('waste-pd', async (container) => { container.innerHTML = template('qcWasteTxn_PD', 'ผลิต / PD'); });
 registerView('waste-wh', async (container) => { container.innerHTML = template('qcWasteTxn_WH', 'คลังสินค้า / WH'); });
+registerView('waste-ma', async (container) => { container.innerHTML = templateMa(); });

@@ -58,5 +58,7 @@ function template() {
   });
 }
 
-registerView('prod-can', async (container) => { container.innerHTML = template(); });
+// 'prod-can' was removed from the PRODUCTION menu in favor of
+// 'prod-emptycan' (see txn-emptycan.js) — this Can Usage screen now only
+// serves the QC menu's own Can Usage item.
 registerView('qc-can', async (container) => { container.innerHTML = template(); });

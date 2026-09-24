@@ -8,7 +8,7 @@ const DEPT_COLORS = {
   QC: 'bg-sky-100 text-sky-700',
   EN: 'bg-purple-100 text-purple-700',
 };
-const ROLE_DEPT_MAP = { prod: 'PD', wh: 'WH', qc: 'QC', ma: 'EN' };
+const ROLE_DEPT_MAP = { pd: 'PD', wh: 'WH', qc: 'QC', ma: 'EN' };
 
 const baseResource = createTxnResource({
   table: 'issue_log',

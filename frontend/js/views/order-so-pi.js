@@ -94,9 +94,16 @@ function component() {
     totalQty(row) {
       return (row.so_pi_items || []).reduce((s, it) => s + Number(it.qty || 0), 0);
     },
-    productNames(row) {
-      const names = (row.so_pi_items || []).map((it) => it.products?.product_name).filter(Boolean);
-      return [...new Set(names)].join(', ') || '-';
+    itemCount(row) {
+      return (row.so_pi_items || []).length;
+    },
+    etdOnPoLabel(row) {
+      if (!row.etd_on_po) return '-';
+      if (row.etd_month_only) {
+        const d = new Date(`${row.etd_on_po}T00:00:00`);
+        return isNaN(d) ? '-' : d.toLocaleString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+      }
+      return this.fmtDate(row.etd_on_po);
     },
 
     openCreate() {
@@ -369,21 +376,23 @@ registerView('order-so-pi', async (container) => {
               <th class="px-3 py-2">เลขที่ SO/PI</th>
               <th class="px-3 py-2">วันที่</th>
               <th class="px-3 py-2">ลูกค้า</th>
-              <th class="px-3 py-2">สินค้า</th>
-              <th class="px-3 py-2 text-right">จำนวนรวม</th>
+              <th class="px-3 py-2 text-right">จำนวน Item</th>
+              <th class="px-3 py-2 text-right">จำนวน(ลัง)</th>
+              <th class="px-3 py-2">ETD on PO</th>
               <th class="px-3 py-2 text-center">จัดการ</th>
             </tr>
           </thead>
           <tbody>
-            <template x-if="loading"><tr><td colspan="6" class="text-center py-8 text-gray-400"><i class="fa-solid fa-spinner fa-spin"></i> กำลังโหลด...</td></tr></template>
-            <template x-if="!loading && filteredRows.length === 0"><tr><td colspan="6" class="text-center py-8 text-gray-400">ไม่พบข้อมูล</td></tr></template>
+            <template x-if="loading"><tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fa-solid fa-spinner fa-spin"></i> กำลังโหลด...</td></tr></template>
+            <template x-if="!loading && filteredRows.length === 0"><tr><td colspan="7" class="text-center py-8 text-gray-400">ไม่พบข้อมูล</td></tr></template>
             <template x-for="row in filteredRows" :key="row.id">
               <tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="px-3 py-2 font-semibold" x-text="row.doc_no"></td>
                 <td class="px-3 py-2 whitespace-nowrap" x-text="fmtDate(row.doc_date)"></td>
                 <td class="px-3 py-2" x-text="row.customers?.customer_name || '-'"></td>
-                <td class="px-3 py-2 max-w-[260px] truncate" :title="productNames(row)" x-text="productNames(row)"></td>
+                <td class="px-3 py-2 text-right" x-text="itemCount(row).toLocaleString()"></td>
                 <td class="px-3 py-2 text-right" x-text="totalQty(row).toLocaleString()"></td>
+                <td class="px-3 py-2 whitespace-nowrap" x-text="etdOnPoLabel(row)"></td>
                 <td class="px-3 py-2 text-center whitespace-nowrap">
                   <button class="text-secondary hover:text-blue-800 px-1.5" @click="openEdit(row)" title="แก้ไข"><i class="fa-solid fa-pen"></i></button>
                   <button class="text-danger hover:text-red-800 px-1.5" @click="remove(row)" title="ลบ"><i class="fa-solid fa-trash"></i></button>

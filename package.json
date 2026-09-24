@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "description": "OrderCenter — ระบบบูรณาการคำสั่งซื้อครบวงจร (Taveechai) — static frontend + Netlify Functions dependencies",
   "scripts": {
-    "dev": "netlify dev"
+    "dev": "netlify dev",
+    "create-demo-users": "node scripts/create-demo-users.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

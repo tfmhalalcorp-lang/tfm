@@ -8,6 +8,7 @@ import { registerView } from '../router.js';
 import { supabase, callFunction } from '../lib/supabaseClient.js';
 import { alertError, toastSuccess, confirmDelete, formatDate, getLocalDate, syncPickers } from '../lib/ui-helpers.js';
 import { exportElementToPdf } from '../lib/export-helpers.js';
+import { bookingStatus as sharedBookingStatus, computeOrderIssues } from '../lib/order-status.js';
 
 // Fixed bank details printed on every Commercial Invoice's TERMS OF
 // PAYMENT box — same account on every invoice, confirmed with the user.
@@ -77,6 +78,8 @@ function component() {
     cartonLabelsBySoPi: {},
     doBySoPi: {},
     deliveriesBySoPi: {},
+    accountingBySoPi: {},
+    issuesBySoPi: {},
     doView: 'list', // 'list' | 'form' — a SO/PI can have multiple DOs, so the 'do' modal is a mini list+form
     doList: [],
     loadingDoList: false,
@@ -114,13 +117,16 @@ function component() {
           { data: cartonLabels, error: e4 },
           { data: dos, error: e5 },
           { data: deliveries, error: e6 },
+          { data: accounting, error: e7 },
         ] = await Promise.all([
           supabase.from('so_pi').select('*, customers!customer_id(customer_name), so_pi_items(product_id, qty, products(product_name))').order('doc_date', { ascending: false }),
-          supabase.from('production_plans').select('*'),
+          // ascending so keyBySoPi's "last one wins" keeps the latest plan/DO per SO/PI (multiple plans/DOs are allowed)
+          supabase.from('production_plans').select('*').order('plan_date', { ascending: true }),
           supabase.from('booking_confirmations').select('*'),
           supabase.from('carton_label_preps').select('*'),
-          supabase.from('delivery_orders').select('*'),
+          supabase.from('delivery_orders').select('*').order('do_date', { ascending: true, nullsFirst: true }),
           supabase.from('deliveries').select('*'),
+          supabase.from('accounting_entries').select('*, deliveries!delivery_id(so_pi_id)'),
         ]);
         if (e1) throw new Error(e1.message);
         if (e2) throw new Error(e2.message);
@@ -128,17 +134,49 @@ function component() {
         if (e4) throw new Error(e4.message);
         if (e5) throw new Error(e5.message);
         if (e6) throw new Error(e6.message);
+        if (e7) throw new Error(e7.message);
         this.rows = soPi || [];
         this.plansBySoPi = keyBySoPi(plans);
         this.bookingsBySoPi = keyBySoPi(bookings);
         this.cartonLabelsBySoPi = keyBySoPi(cartonLabels);
         this.doBySoPi = keyBySoPi(dos);
         this.deliveriesBySoPi = keyBySoPi(deliveries);
+        // A delivery may now have several payment installments, so each
+        // SO/PI maps to an ARRAY of accounting_entries rows (was a single
+        // row before installments existed).
+        this.accountingBySoPi = {};
+        (accounting || []).forEach((row) => {
+          const soPiId = row.deliveries?.so_pi_id;
+          if (!soPiId) return;
+          (this.accountingBySoPi[soPiId] ||= []).push(row);
+        });
+        this.issuesBySoPi = {};
+        this.rows.forEach((row) => {
+          this.issuesBySoPi[row.id] = computeOrderIssues(row, {
+            plan: this.plansBySoPi[row.id],
+            cartonLabel: this.cartonLabelsBySoPi[row.id],
+            booking: this.bookingsBySoPi[row.id],
+            deliveryOrder: this.doBySoPi[row.id],
+            delivery: this.deliveriesBySoPi[row.id],
+            accounting: this.accountingBySoPi[row.id],
+          });
+        });
+        Alpine.store('notifications')?.refresh();
       } catch (err) {
         alertError(err);
       } finally {
         this.loading = false;
       }
+    },
+
+    rowIssues(id) {
+      return this.issuesBySoPi[id] || { stageIssues: [], hasIssue: false, overdue: false };
+    },
+    stageHasIssue(id, stage) {
+      return this.rowIssues(id).stageIssues.some((i) => i.stage === stage);
+    },
+    rowIssueTooltip(id) {
+      return this.rowIssues(id).stageIssues.map((i) => i.message).join('\n');
     },
 
     hasPlan(id) {
@@ -159,11 +197,17 @@ function component() {
     totalQty(row) {
       return (row.so_pi_items || []).reduce((s, it) => s + Number(it.qty || 0), 0);
     },
-    productNames(row) {
-      const names = (row.so_pi_items || []).map((it) => it.products?.product_name).filter(Boolean);
-      return [...new Set(names)].join(', ') || '-';
+    itemCount(row) {
+      return (row.so_pi_items || []).length;
     },
-
+    etdOnPoLabel(row) {
+      if (!row.etd_on_po) return '-';
+      if (row.etd_month_only) {
+        const d = new Date(`${row.etd_on_po}T00:00:00`);
+        return isNaN(d) ? '-' : d.toLocaleString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+      }
+      return this.fmtDate(row.etd_on_po);
+    },
     openPlaceholder() {
       window.Swal?.fire({ icon: 'info', title: 'อยู่ระหว่างการพัฒนา', text: 'เมนูนี้จะเปิดใช้งานในระยะถัดไป' });
     },
@@ -310,9 +354,7 @@ function component() {
     },
 
     bookingStatus() {
-      const agent = (this.form.agent || '').trim();
-      if (!agent) return { label: '-', cls: 'bg-gray-100 text-gray-500' };
-      return this.form.etd_on_board ? { label: 'BOOKING CONFIRM', cls: 'bg-green-100 text-green-700' } : { label: 'PENDING', cls: 'bg-amber-100 text-amber-700' };
+      return sharedBookingStatus(this.form.agent, this.form.etd_on_board);
     },
 
     async saveBooking() {
@@ -809,11 +851,15 @@ function component() {
           .from('accounting_entries')
           .select('*')
           .eq('delivery_id', delivery.id)
-          .maybeSingle();
+          .order('installment_no', { ascending: true });
         if (error) throw new Error(error.message);
-        this.form = existing
-          ? { id: existing.id, due_date: existing.due_date, amount: existing.amount }
-          : { id: null, due_date: getLocalDate(), amount: 0 };
+        this.form = {
+          currency: existing && existing.length ? existing[0].currency : 'USD',
+          installments:
+            existing && existing.length
+              ? existing.map((e) => ({ id: e.id, installment_no: e.installment_no, due_date: e.due_date, amount: e.amount }))
+              : [{ id: null, installment_no: 1, due_date: getLocalDate(), amount: 0 }],
+        };
       } catch (err) {
         alertError(err);
         return;
@@ -824,23 +870,36 @@ function component() {
       this.$nextTick(() => syncPickers(this.$root));
     },
 
+    addAccountingInstallmentRow() {
+      const n = this.form.installments.length + 1;
+      this.form.installments.push({ id: null, installment_no: n, due_date: '', amount: 0 });
+    },
+    removeAccountingInstallmentRow(idx) {
+      if (this.form.installments.length <= 1) return;
+      this.form.installments.splice(idx, 1);
+    },
+
     async saveAccounting() {
-      if (!this.form.due_date) {
-        window.Swal?.fire({ icon: 'warning', title: 'กรุณาตรวจสอบข้อมูล', text: 'กรุณากรอกวันที่กำหนดชำระ' });
+      const validInstallments = this.form.installments.filter((it) => it.due_date);
+      if (!validInstallments.length) {
+        window.Swal?.fire({ icon: 'warning', title: 'กรุณาตรวจสอบข้อมูล', text: 'กรุณากรอกงวดการชำระเงินอย่างน้อย 1 งวด' });
         return;
       }
       this.saving = true;
       try {
-        const payload = {
+        const { error: delErr } = await supabase.from('accounting_entries').delete().eq('delivery_id', this.currentDelivery.id);
+        if (delErr) throw new Error(delErr.message);
+        const payload = validInstallments.map((it, idx) => ({
           delivery_id: this.currentDelivery.id,
-          due_date: this.form.due_date,
-          amount: Number(this.form.amount || 0),
-        };
-        const { error } = this.form.id
-          ? await supabase.from('accounting_entries').update(payload).eq('id', this.form.id)
-          : await supabase.from('accounting_entries').insert(payload);
-        if (error) throw new Error(error.message);
+          currency: this.form.currency,
+          installment_no: Number(it.installment_no || idx + 1),
+          due_date: it.due_date,
+          amount: Number(it.amount || 0),
+        }));
+        const { error: insErr } = await supabase.from('accounting_entries').insert(payload);
+        if (insErr) throw new Error(insErr.message);
         this.modalOpen = false;
+        await this.load();
         toastSuccess('บันทึกข้อมูลบัญชีสำเร็จ');
       } catch (err) {
         alertError(err);
@@ -885,56 +944,80 @@ registerView('order-hub', async (container) => {
               <th class="px-3 py-2">เลขที่ SO/PI</th>
               <th class="px-3 py-2">วันที่</th>
               <th class="px-3 py-2">ลูกค้า</th>
-              <th class="px-3 py-2">สินค้า</th>
-              <th class="px-3 py-2 text-right">จำนวน</th>
+              <th class="px-3 py-2 text-right">จำนวน Item</th>
+              <th class="px-3 py-2 text-right">จำนวน(ลัง)</th>
+              <th class="px-3 py-2">ETD on PO</th>
               <th class="px-3 py-2 text-center">จัดการ</th>
             </tr>
           </thead>
           <tbody>
             <template x-if="loading">
-              <tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fa-solid fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>
+              <tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fa-solid fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>
             </template>
             <template x-if="!loading && rows.length === 0">
-              <tr><td colspan="7" class="text-center py-8 text-gray-400">ยังไม่มีรายการ SO/PI</td></tr>
+              <tr><td colspan="8" class="text-center py-8 text-gray-400">ยังไม่มีรายการ SO/PI</td></tr>
             </template>
             <template x-for="row in rows" :key="row.id">
-              <tr class="border-b border-gray-100 hover:bg-gray-50 align-top">
+              <tr class="border-b border-gray-100 hover:bg-gray-50 align-top" :class="rowIssues(row.id).overdue ? 'bg-amber-50' : ''">
                 <td class="px-3 py-2">
                   <span class="badge" :class="row.doc_type === 'SO' ? 'bg-sky-100 text-sky-700' : 'bg-purple-100 text-purple-700'" x-text="row.doc_type"></span>
                 </td>
-                <td class="px-3 py-2 font-semibold" x-text="row.doc_no"></td>
+                <td class="px-3 py-2 font-semibold whitespace-nowrap">
+                  <span x-text="row.doc_no"></span>
+                  <i class="fa-solid fa-triangle-exclamation text-amber-500 ml-1 cursor-help"
+                     x-show="rowIssues(row.id).hasIssue" :title="rowIssueTooltip(row.id)"></i>
+                </td>
                 <td class="px-3 py-2 whitespace-nowrap" x-text="fmtDate(row.doc_date)"></td>
                 <td class="px-3 py-2" x-text="row.customers?.customer_name || '-'"></td>
-                <td class="px-3 py-2 max-w-[220px] truncate" :title="productNames(row)" x-text="productNames(row)"></td>
+                <td class="px-3 py-2 text-right" x-text="itemCount(row).toLocaleString()"></td>
                 <td class="px-3 py-2 text-right" x-text="totalQty(row).toLocaleString()"></td>
+                <td class="px-3 py-2 whitespace-nowrap" x-text="etdOnPoLabel(row)"></td>
                 <td class="px-3 py-2">
                   <div class="flex flex-wrap gap-1.5 justify-center">
-                    <button class="btn btn-sm" :class="hasPlan(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
-                            @click="openPlan(row)" title="แผนการผลิต">
-                      <i class="fa-solid fa-calendar-days"></i>
-                    </button>
+                    <div class="relative">
+                      <button class="btn btn-sm" :class="hasPlan(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
+                              @click="openPlan(row)" title="แผนการผลิต">
+                        <i class="fa-solid fa-calendar-days"></i>
+                      </button>
+                      <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" x-show="stageHasIssue(row.id, 'plan')"></span>
+                    </div>
                     <button class="btn btn-sm btn-secondary" @click="openPlaceholder()" title="จัดเตรียม">
                       <i class="fa-solid fa-boxes-packing"></i>
                     </button>
-                    <button class="btn btn-sm" :class="hasCartonLabel(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
-                            @click="openCartonLabel(row)" title="จัดเตรียม Packaging">
-                      <i class="fa-solid fa-tags"></i>
-                    </button>
-                    <button class="btn btn-sm" :class="hasBooking(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
-                            @click="openBooking(row)" title="Status Booking">
-                      <i class="fa-solid fa-clipboard-check"></i>
-                    </button>
-                    <button class="btn btn-sm" :class="hasDO(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
-                            @click="openDO(row)" title="DO">
-                      <i class="fa-solid fa-dolly"></i>
-                    </button>
-                    <button class="btn btn-sm" :class="hasDelivery(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
-                            @click="openDelivery(row)" title="ส่งมอบ">
-                      <i class="fa-solid fa-truck-fast"></i>
-                    </button>
-                    <button class="btn btn-sm btn-secondary" @click="openAccounting(row)" title="บัญชี">
-                      <i class="fa-solid fa-sack-dollar"></i>
-                    </button>
+                    <div class="relative">
+                      <button class="btn btn-sm" :class="hasCartonLabel(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
+                              @click="openCartonLabel(row)" title="จัดเตรียม Packaging">
+                        <i class="fa-solid fa-tags"></i>
+                      </button>
+                      <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" x-show="stageHasIssue(row.id, 'cartonLabel')"></span>
+                    </div>
+                    <div class="relative">
+                      <button class="btn btn-sm" :class="hasBooking(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
+                              @click="openBooking(row)" title="Status Booking">
+                        <i class="fa-solid fa-clipboard-check"></i>
+                      </button>
+                      <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" x-show="stageHasIssue(row.id, 'booking')"></span>
+                    </div>
+                    <div class="relative">
+                      <button class="btn btn-sm" :class="hasDO(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
+                              @click="openDO(row)" title="DO">
+                        <i class="fa-solid fa-dolly"></i>
+                      </button>
+                      <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" x-show="stageHasIssue(row.id, 'do')"></span>
+                    </div>
+                    <div class="relative">
+                      <button class="btn btn-sm" :class="hasDelivery(row.id) ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'btn-secondary'"
+                              @click="openDelivery(row)" title="ส่งมอบ">
+                        <i class="fa-solid fa-truck-fast"></i>
+                      </button>
+                      <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" x-show="stageHasIssue(row.id, 'delivery')"></span>
+                    </div>
+                    <div class="relative">
+                      <button class="btn btn-sm btn-secondary" @click="openAccounting(row)" title="บัญชี">
+                        <i class="fa-solid fa-sack-dollar"></i>
+                      </button>
+                      <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" x-show="stageHasIssue(row.id, 'accounting')"></span>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -1211,8 +1294,40 @@ registerView('order-hub', async (container) => {
                   <div><label class="form-label">Invoice No.</label><div class="form-control bg-gray-50 text-gray-700" x-text="currentDelivery?.invoice_no || '-'"></div></div>
                   <div><label class="form-label">Invoice Date</label><div class="form-control bg-gray-50 text-gray-700" x-text="fmtDate(currentDelivery?.invoice_date)"></div></div>
                 </div>
-                <div><label class="form-label">วันที่กำหนดชำระ</label><input type="date" x-model="form.due_date" required class="form-control"></div>
-                <div><label class="form-label">ยอดเงิน</label><input type="number" step="0.01" min="0" x-model.number="form.amount" class="form-control"></div>
+                <div>
+                  <label class="form-label">สกุลเงิน (Currency)</label>
+                  <div class="flex gap-4">
+                    <label class="inline-flex items-center gap-1.5"><input type="radio" value="USD" x-model="form.currency"> USD</label>
+                    <label class="inline-flex items-center gap-1.5"><input type="radio" value="THB" x-model="form.currency"> THB</label>
+                  </div>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="form-label mb-0">งวดการชำระเงิน</label>
+                    <button type="button" class="btn btn-sm btn-secondary" @click="addAccountingInstallmentRow()"><i class="fa-solid fa-plus"></i> เพิ่มงวด</button>
+                  </div>
+                  <div class="space-y-2">
+                    <template x-for="(it, idx) in form.installments" :key="idx">
+                      <div class="flex items-end gap-2">
+                        <div class="w-20">
+                          <label class="form-label text-xs">งวดที่</label>
+                          <input type="number" min="1" x-model.number="it.installment_no" class="form-control">
+                        </div>
+                        <div class="flex-1">
+                          <label class="form-label text-xs">วันที่กำหนดชำระ</label>
+                          <input type="date" x-model="it.due_date" class="form-control">
+                        </div>
+                        <div class="flex-1">
+                          <label class="form-label text-xs">จำนวนเงิน</label>
+                          <input type="number" step="0.01" min="0" x-model.number="it.amount" class="form-control">
+                        </div>
+                        <button type="button" class="btn btn-sm btn-secondary text-danger" @click="removeAccountingInstallmentRow(idx)" title="ลบงวดนี้">
+                          <i class="fa-solid fa-trash"></i>
+                        </button>
+                      </div>
+                    </template>
+                  </div>
+                </div>
               </div>
             </template>
           </div>

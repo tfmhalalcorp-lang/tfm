@@ -5,6 +5,8 @@
 // Supabase query itself now, not in JS) and returns the same shape of
 // scorecards/chart data the legacy dashboards rendered.
 
+import { computeOrderIssues, packagingReadinessCounts, bookingStatus, daysBetween, todayIso } from '../lib/order-status.js';
+
 function sumBy(rows, field) {
   return rows.reduce((sum, r) => sum + Number(r[field] || 0), 0);
 }
@@ -295,5 +297,138 @@ export function computeRMDashboard({ rm, fillQ, cans, fillW, supplierMap }) {
     pieBatch: { labels: Object.keys(batchCountBySupplier), data: Object.values(batchCountBySupplier) },
     lineChart: { labels: sortedDates, datasets: lineDatasets },
     crosstab: { suppliers: sortedCTSuppliers, rows: crosstabRows },
+  };
+}
+
+function keyBySoPiLatest(list) {
+  const map = {};
+  (list || []).forEach((row) => (map[row.so_pi_id] = row));
+  return map;
+}
+
+/** subtotal -> -discount -> ×(1 + vat%), same formula as order-hub.js's Commercial Invoice preview. */
+function orderNetTotal(order) {
+  const subtotal = (order.so_pi_items || []).reduce((s, it) => s + Number(it.qty || 0) * Number(it.unit_price || 0), 0);
+  const discount = Number(order.discount || 0);
+  const vatPercent = Number(order.vat_percent || 0);
+  const afterDiscount = subtotal - discount;
+  return afterDiscount + afterDiscount * (vatPercent / 100);
+}
+
+const NO_CURRENCY_LABEL = 'ไม่ระบุสกุลเงิน';
+
+export function computeOrderTrackingDashboard({ rows, plans, bookings, cartonLabels, dos, deliveries, accounting }) {
+  const plansBySoPi = keyBySoPiLatest(plans);
+  const bookingsBySoPi = keyBySoPiLatest(bookings);
+  const cartonLabelsBySoPi = keyBySoPiLatest(cartonLabels);
+  const doBySoPi = keyBySoPiLatest(dos);
+  const deliveriesBySoPi = keyBySoPiLatest(deliveries);
+  // A delivery may have several payment installments now, so each SO/PI
+  // maps to an ARRAY of accounting_entries rows (used only for its
+  // truthiness below — "has at least one payment entry recorded").
+  const accountingBySoPi = {};
+  (accounting || []).forEach((row) => {
+    const soPiId = row.deliveries?.so_pi_id;
+    if (!soPiId) return;
+    (accountingBySoPi[soPiId] ||= []).push(row);
+  });
+
+  const today = todayIso();
+  let withPlan = 0, withPackaging = 0, withBookingConfirmed = 0, withDO = 0, withInvoice = 0;
+  const valueByCurrency = {};
+  const countByCurrency = {};
+  const notShippedValueByCurrency = {};
+  const packagingChart = [];
+  const leadTimeChart = [];
+  const completedLeadTimes = [];
+  const orderTable = [];
+  const crosstab = [];
+
+  rows.forEach((order) => {
+    const plan = plansBySoPi[order.id];
+    const cartonLabel = cartonLabelsBySoPi[order.id];
+    const booking = bookingsBySoPi[order.id];
+    const deliveryOrder = doBySoPi[order.id];
+    const delivery = deliveriesBySoPi[order.id];
+    const accountingEntry = accountingBySoPi[order.id];
+
+    if (plan) withPlan++;
+    if (cartonLabel) withPackaging++;
+    if (deliveryOrder) withDO++;
+    if (delivery) withInvoice++;
+
+    const issues = computeOrderIssues(order, { plan, cartonLabel, booking, deliveryOrder, delivery, accounting: accountingEntry });
+    if (!issues.stageIssues.some((i) => i.stage === 'booking')) withBookingConfirmed++;
+
+    const netTotal = orderNetTotal(order);
+    const currency = order.currency || NO_CURRENCY_LABEL;
+    valueByCurrency[currency] = (valueByCurrency[currency] || 0) + netTotal;
+    countByCurrency[currency] = (countByCurrency[currency] || 0) + 1;
+    if (!deliveryOrder) notShippedValueByCurrency[currency] = (notShippedValueByCurrency[currency] || 0) + netTotal;
+
+    packagingChart.push({ doc_no: order.doc_no, ...packagingReadinessCounts(cartonLabel) });
+
+    const completed = !!delivery?.invoice_date;
+    const days = completed ? daysBetween(order.doc_date, delivery.invoice_date) : daysBetween(order.doc_date, today);
+    leadTimeChart.push({ doc_no: order.doc_no, days, completed });
+    if (completed) completedLeadTimes.push(days);
+
+    orderTable.push({
+      doc_no: order.doc_no,
+      doc_type: order.doc_type,
+      doc_date: order.doc_date,
+      customer_name: order.customers?.customer_name || '-',
+      destination: order.destination || '-',
+      currency,
+      netTotal,
+      daysOpen: issues.daysOpen,
+      overdue: issues.overdue,
+      hasIssue: issues.hasIssue,
+    });
+
+    const qty = (order.so_pi_items || []).reduce((s, it) => s + Number(it.qty || 0), 0);
+    const bStatus = bookingStatus(order.agent, booking?.etd_on_board);
+    const containerNos = (deliveryOrder?.delivery_order_containers || []).map((c) => c.container_no).filter(Boolean);
+    crosstab.push({
+      doc_no: order.doc_no,
+      bookingLabel: bStatus.label,
+      bookingCls: bStatus.cls,
+      loadingDate: booking?.loading_date || null,
+      etdOnBoard: booking?.etd_on_board || null,
+      doAndContainers: deliveryOrder ? `${deliveryOrder.do_no || '-'}${containerNos.length ? ' - ' + containerNos.join(', ') : ''}` : '-',
+      qty,
+    });
+  });
+
+  const avgValueByCurrency = {};
+  Object.keys(valueByCurrency).forEach((cur) => {
+    avgValueByCurrency[cur] = valueByCurrency[cur] / countByCurrency[cur];
+  });
+
+  const leadTimeStats = completedLeadTimes.length
+    ? {
+        avg: completedLeadTimes.reduce((s, d) => s + d, 0) / completedLeadTimes.length,
+        min: Math.min(...completedLeadTimes),
+        max: Math.max(...completedLeadTimes),
+      }
+    : { avg: 0, min: 0, max: 0 };
+
+  return {
+    scorecards: {
+      totalOrders: rows.length,
+      withPlan,
+      withPackaging,
+      withBookingConfirmed,
+      withDO,
+      withInvoice,
+      valueByCurrency,
+      avgValueByCurrency,
+      notShippedValueByCurrency,
+    },
+    packagingChart,
+    leadTimeChart,
+    leadTimeStats,
+    orderTable,
+    crosstab,
   };
 }

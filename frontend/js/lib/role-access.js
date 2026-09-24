@@ -4,17 +4,23 @@
 // navigateTo() switch cases exactly, so the router/view-registry design
 // stays a 1:1 port.
 
-const ALL_ROLES = ['admin', 'prod', 'wh', 'qc', 'ma', 'rpt'];
+// Role model (6 roles): admin sees everything; pd/wh/qc/ma are the four
+// production-floor departments, each seeing only its own menu group; sale
+// manages the order pipeline. Only 'pd' additionally sees the 3 dashboard
+// links. Every role sees รายงาน (reports). See
+// supabase/migrations/022_role_restructure.sql for the matching RLS.
+const ALL_ROLES = ['admin', 'pd', 'wh', 'qc', 'ma', 'sale'];
 
 export const MENU_SECTIONS = [
-  { type: 'link', view: 'dashboard', icon: 'fa-chart-line', label: 'Dashboard', roles: ALL_ROLES },
-  { type: 'link', view: 'dashboard-waste', icon: 'fa-recycle', label: 'สรุปของเสีย', roles: ALL_ROLES },
-  { type: 'link', view: 'dashboard-rm', icon: 'fa-fish', label: 'ประเมินวัตถุดิบ', roles: ALL_ROLES },
+  { type: 'link', view: 'dashboard', icon: 'fa-chart-line', label: 'Dashboard', roles: ['admin', 'pd'] },
+  { type: 'link', view: 'dashboard-waste', icon: 'fa-recycle', label: 'สรุปของเสีย', roles: ['admin', 'pd'] },
+  { type: 'link', view: 'dashboard-rm', icon: 'fa-fish', label: 'ประเมินวัตถุดิบ', roles: ['admin', 'pd'] },
 
   {
-    type: 'group', id: 'order', icon: 'fa-file-invoice', label: 'จัดการคำสั่งซื้อ', roles: ['admin'],
+    type: 'group', id: 'order', icon: 'fa-file-invoice', label: 'จัดการคำสั่งซื้อ', roles: ['admin', 'sale'],
     items: [
-      { view: 'order-hub', icon: 'fa-table-list', label: 'หน้าจัดการรวม' },
+      { view: 'dashboard-order-tracking', icon: 'fa-chart-pie', label: 'Dashboard คำสั่งซื้อ' },
+      { view: 'order-hub', icon: 'fa-table-list', label: 'หน้าจัดการรวม', badgeKey: 'orderIssueCount' },
       { view: 'order-so-pi', icon: 'fa-file-signature', label: 'บันทึกคำสั่งซื้อ SO/PI' },
       { view: 'order-plan', icon: 'fa-calendar-days', label: 'แผนการผลิต' },
       { view: 'order-delivery', icon: 'fa-truck-fast', label: 'บันทึกการจัดส่ง/ส่งมอบสินค้า' },
@@ -22,11 +28,11 @@ export const MENU_SECTIONS = [
     ],
   },
   {
-    type: 'group', id: 'prod', icon: 'fa-industry', label: 'PRODUCTION', roles: ['admin', 'prod'],
+    type: 'group', id: 'prod', icon: 'fa-industry', label: 'PRODUCTION', roles: ['admin', 'pd'],
     items: [
       { view: 'prod-batch', icon: 'fa-clipboard-list', label: 'Batch Setup' },
       { view: 'prod-rm', icon: 'fa-fish', label: 'RM Usage' },
-      { view: 'prod-can', icon: 'fa-box-open', label: 'Can Usage' },
+      { view: 'prod-emptycan', icon: 'fa-box-open', label: 'Empty Can Usage' },
       { view: 'prod-fillquantity', icon: 'fa-cubes', label: 'Production Quantity' },
       { view: 'waste-pd', icon: 'fa-recycle', label: 'Waste Log (PD)' },
       { view: 'issue-log', icon: 'fa-triangle-exclamation', label: 'แจ้งปัญหา' },
@@ -46,6 +52,7 @@ export const MENU_SECTIONS = [
     items: [
       { view: 'prod-fillweight', icon: 'fa-balance-scale', label: 'Fill Weight' },
       { view: 'qc-can', icon: 'fa-box-open', label: 'Can Usage' },
+      { view: 'qc-sauce', icon: 'fa-bottle-droplet', label: 'Sauce Usage' },
       { view: 'qc-waste', icon: 'fa-recycle', label: 'Waste Log (QC)' },
       { view: 'issue-log', icon: 'fa-triangle-exclamation', label: 'แจ้งปัญหา' },
     ],
@@ -54,6 +61,7 @@ export const MENU_SECTIONS = [
     type: 'group', id: 'ma', icon: 'fa-wrench', label: 'MAINTENANCE', roles: ['admin', 'ma'],
     items: [
       { view: 'ma-log', icon: 'fa-screwdriver-wrench', label: 'Breakdown' },
+      { view: 'waste-ma', icon: 'fa-recycle', label: 'Waste Log (MA)' },
       { view: 'issue-log', icon: 'fa-triangle-exclamation', label: 'แจ้งปัญหา' },
     ],
   },
@@ -66,7 +74,7 @@ export const MENU_SECTIONS = [
       { view: 'report-qc', icon: 'fa-clipboard-check', label: 'รายงานตรวจสอบคุณภาพ' },
       { view: 'report-maintenance', icon: 'fa-screwdriver-wrench', label: 'รายงานการซ่อมบำรุง' },
       { view: 'report-rm-price', icon: 'fa-money-bill-trend-up', label: 'วิเคราะห์ราคา RM', roles: ['admin'] },
-      { view: 'report-sales-order', icon: 'fa-file-invoice', label: 'SALES ORDER', roles: ['admin'] },
+      { view: 'report-sales-order', icon: 'fa-file-invoice', label: 'SALES ORDER', roles: ['admin', 'sale'] },
     ],
   },
   {
@@ -78,6 +86,7 @@ export const MENU_SECTIONS = [
       { view: 'settings-supplier', icon: 'fa-truck', label: 'Suppliers' },
       { view: 'settings-cansize', icon: 'fa-ruler-combined', label: 'Can Sizes' },
       { view: 'settings-machine', icon: 'fa-cogs', label: 'Machines' },
+      { view: 'settings-sauce', icon: 'fa-bottle-droplet', label: 'Sauces' },
       { view: 'settings-product', icon: 'fa-boxes-packing', label: 'Products' },
     ],
   },
@@ -100,20 +109,24 @@ export const PAGE_TITLES = {
   'settings-supplier': 'จัดการข้อมูลผู้ขาย (Supplier)',
   'settings-cansize': 'จัดการข้อมูลขนาดกระป๋อง',
   'settings-machine': 'จัดการข้อมูลเครื่องจักร',
+  'settings-sauce': 'จัดการข้อมูลซอส',
   'prod-batch': 'Production: Batch Setup',
   'prod-rm': 'Production: RM Usage',
-  'prod-can': 'Production: Can Usage',
+  'prod-emptycan': 'Production: Empty Can Usage',
   'qc-can': 'QC: Can Usage',
+  'qc-sauce': 'QC: Sauce Usage',
   'prod-fillquantity': 'Production: Production Quantity',
   'prod-fillweight': 'QC: Fill Weight',
   'wh-in': 'Warehouse: Stock In',
   'qc-waste': 'QC: Daily Waste Log',
   'waste-pd': 'Production: Daily Waste Log',
   'waste-wh': 'Warehouse: Daily Waste Log',
+  'waste-ma': 'Maintenance: Daily Waste Log',
   'ma-log': 'Maintenance: Breakdown',
   'issue-log': 'แจ้งปัญหาในการผลิต',
   'wh-load-ready': 'Warehouse: วันที่พร้อมโหลด',
   'settings-product': 'จัดการข้อมูลสินค้า (Products)',
+  'dashboard-order-tracking': 'Dashboard ติดตามคำสั่งซื้อ',
   'order-hub': 'หน้าจัดการรวม (Order Hub)',
   'order-so-pi': 'บันทึกคำสั่งซื้อ SO/PI',
   'order-plan': 'แผนการผลิต',

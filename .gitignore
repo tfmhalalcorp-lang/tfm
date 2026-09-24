@@ -1,3 +1,8 @@
 *.mp4
 node_modules/
 .env
+
+# Personal / factory data files — not meant for the repo
+Certificate_.jpg
+Certificate_ 2567.jpg
+TFM Production DB.xlsx
