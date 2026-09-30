@@ -117,6 +117,12 @@ export function createTxnResource(config) {
     },
 
     async save() {
+      // A date typed into the flatpickr alt input is only committed to the
+      // model on blur; on mobile the Save tap can land before that happens.
+      this.$root.querySelectorAll('input').forEach((input) => {
+        const fp = input._flatpickr;
+        if (fp && fp.altInput && fp.altInput.value) fp.setDate(fp.altInput.value, true, fp.config.altFormat);
+      });
       const errMsg = config.validate ? config.validate(this.form, this.isEdit) : null;
       if (errMsg) {
         window.Swal?.fire({ icon: 'warning', title: 'กรุณาตรวจสอบข้อมูล', text: errMsg });
