@@ -76,7 +76,10 @@ export function initDatePickers() {
         altInput: true,
         altFormat: 'd/m/Y',
         locale: 'th',
-        allowInput: true,
+        // Typed text in the alt input is parsed with dateFormat (Y-m-d), not
+        // altFormat (d/m/Y), so a typed date silently becomes empty on mobile.
+        // Force selection through the calendar instead.
+        allowInput: false,
         disableMobile: true,
       });
     }
