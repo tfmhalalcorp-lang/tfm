@@ -47,7 +47,7 @@ const resource = createTxnResource({
   loadExtra: async () => {
     const [batches, { data: suppliers }] = await Promise.all([
       fetchOpenBatches(),
-      supabase.from('suppliers').select('id, supplier_name, fish_type').order('supplier_name'),
+      supabase.from('suppliers').select('id, supplier_name, fish_type').eq('supplier_type', 'fish').order('supplier_name'),
     ]);
     return { batches, suppliers: suppliers || [] };
   },

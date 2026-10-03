@@ -82,12 +82,18 @@ function makeQcWasteResource(dept) {
 
 function qcWasteComponent(dept) {
   const base = makeQcWasteResource(dept)();
-  return {
-    ...base,
-    wasteTotal(item) {
-      return WASTE_FIELDS.reduce((sum, k) => sum + Number(item[k] || 0), 0);
+  // Not `{ ...base }`: spread would evaluate the `filteredItems` getter once
+  // and freeze it as an empty array, so the list would never show any rows.
+  return Object.defineProperties(base, {
+    wasteTotal: {
+      value(item) {
+        return WASTE_FIELDS.reduce((sum, k) => sum + Number(item[k] || 0), 0);
+      },
+      enumerable: true,
+      writable: true,
+      configurable: true,
     },
-  };
+  });
 }
 
 // MA (Maintenance) waste log — shares the same qc_waste table as the

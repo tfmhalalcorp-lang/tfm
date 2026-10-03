@@ -29,13 +29,10 @@ const resource = createTxnResource({
   }),
   loadExtra: async () => {
     const [{ data: suppliers }, { data: cansizes }] = await Promise.all([
-      // Only can suppliers (can_type set) belong in this dropdown — RM-only
-      // suppliers (fish_type but no can_type) don't sell cans.
-      supabase.from('suppliers').select('id, supplier_name, can_type').order('supplier_name'),
+      supabase.from('suppliers').select('id, supplier_name').eq('supplier_type', 'can').order('supplier_name'),
       supabase.from('can_sizes').select('id, cansize_name').order('cansize_name'),
     ]);
-    const canSuppliers = (suppliers || []).filter((s) => (s.can_type || '').trim() !== '');
-    return { suppliers: canSuppliers, cansizes: cansizes || [] };
+    return { suppliers: suppliers || [], cansizes: cansizes || [] };
   },
 });
 

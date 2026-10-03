@@ -17,6 +17,7 @@ import { alertError, toastSuccess, confirmDelete, syncPickers } from '../lib/ui-
  * @param {(item:object,q:string)=>boolean} config.searchPredicate
  * @param {()=>object} config.emptyForm  Blank form object for "Add"
  * @param {(item:object)=>object} config.toForm  Row -> form object for "Edit"
+ * @param {(item:object,tab:string)=>boolean} [config.tabPredicate] Filter rows by the active tab (anything but 'all')
  * @param {(form:object, isEdit:boolean)=>string|null} [config.validate] Return an error message to block save, else null
  * @param {(form:object)=>object} [config.toPayload] form -> DB payload (defaults to the form itself)
  * @param {()=>Promise<object[]>} [config.fetchItems]  Override the default SELECT
@@ -59,10 +60,14 @@ export function createCrudResource(config) {
     isEdit: false,
     form: {},
 
+    tab: 'all',
+
     get filteredItems() {
       const q = this.search.trim().toLowerCase();
-      if (!q) return this.items;
-      return this.items.filter((item) => config.searchPredicate(item, q));
+      let list = this.items;
+      if (config.tabPredicate && this.tab !== 'all') list = list.filter((item) => config.tabPredicate(item, this.tab));
+      if (!q) return list;
+      return list.filter((item) => config.searchPredicate(item, q));
     },
 
     async init() {
@@ -158,6 +163,7 @@ export function crudListTemplate({
   modalWidthClass = 'max-w-lg',
   hideDeleteExpr = 'false',
   colCount = 4,
+  tabsHtml = '',
 }) {
   return `
   <div x-data="${dataComponent}" x-init="init()">
@@ -172,6 +178,7 @@ export function crudListTemplate({
           </button>
         </div>
       </div>
+      ${tabsHtml}
 
       <div class="overflow-x-auto -mx-1">
         <table class="w-full text-sm border-collapse min-w-[560px]">
