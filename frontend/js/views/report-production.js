@@ -64,7 +64,7 @@ function component() {
             const rmWeight = rmForBatch.reduce((s, r) => s + Number(r.weight || 0), 0);
             const prodQty = fqForBatch.reduce((s, r) => s + Number(r.qty || 0), 0);
             const fwAvg = fwForBatch.length > 0 ? fwForBatch.reduce((s, r) => s + Number(r.weight || 0), 0) / fwForBatch.length : 0;
-            const yieldPct = rmWeight > 0 ? ((prodQty * fwAvg) / (rmWeight * 10)) * 100 : 0;
+            const yieldPct = rmWeight > 0 ? (prodQty * fwAvg) / 1000 / rmWeight * 100 : 0;
             return {
               batch_id: b.batch_id,
               cansize: b.can_sizes?.cansize_name || '-',

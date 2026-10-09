@@ -21,7 +21,6 @@ export function computeMainDashboard({ rm, cans, fillQ, fillW, whIn, brandMap })
   const totalFW = sumBy(fillW, 'weight');
   const avgFillWeight = fillW.length > 0 ? totalFW / fillW.length : 0;
   const canPerRM = totalRM > 0 ? totalProdQGlobal / totalRM : 0;
-  const avgYield = totalRM > 0 ? (totalProdQGlobal * avgFillWeight) / (totalRM * 10) : 0;
 
   const totalWHReceived = sumBy(whIn, 'can_sum');
   const totalWHHeld = sumBy(whIn, 'can_hold');
@@ -75,7 +74,7 @@ export function computeMainDashboard({ rm, cans, fillQ, fillW, whIn, brandMap })
     chartCans.push(d.cans);
     chartWHReceived.push(d.whReceived);
     chartCanPerRM.push(d.rm > 0 ? Number((d.prodQ / d.rm).toFixed(2)) : 0);
-    chartYield.push(d.rm > 0 ? Number(((d.prodQ * avgW) / (d.rm * 10)).toFixed(2)) : 0);
+    chartYield.push(d.rm > 0 ? Number((((d.prodQ * avgW) / 1000 / d.rm) * 100).toFixed(2)) : 0);
     chartYieldRM.push(d.prodQ > 0 ? Number((d.rm / d.prodQ).toFixed(4)) : 0);
   });
 
@@ -86,6 +85,17 @@ export function computeMainDashboard({ rm, cans, fillQ, fillW, whIn, brandMap })
     gaugeReceivedQ += batchData[bid].whReceived;
   });
   const yieldRMAvg = gaugeProdQ > 0 ? totalRM / gaugeProdQ : 0;
+
+  // %Yield = (cans x fill weight / 1000) / RM weight x 100 per batch, then
+  // the simple mean of batch yields (same as report-production's average).
+  const batchYields = [];
+  activeBatchIds.forEach((bid) => {
+    const d = batchData[bid];
+    const avgW = d.wCount > 0 ? d.wSum / d.wCount : 0;
+    const y = d.rm > 0 ? (((d.prodQ * avgW) / 1000) / d.rm) * 100 : 0;
+    if (y > 0) batchYields.push(y);
+  });
+  const avgYield = batchYields.length ? batchYields.reduce((s, v) => s + v, 0) / batchYields.length : 0;
 
   const whBrandData = {};
   whIn.forEach((r) => {
